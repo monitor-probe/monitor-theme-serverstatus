@@ -11,6 +11,7 @@ import { api, type Node } from "@/lib/api"
 import {
   axisBytes, axisTop, bytes, clockFor, quarters, cpuName, CYCLES, FOREVER, money, osName, rate, timeTicks, uptime,
 } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
 type Point = {
   ts: number
@@ -146,35 +147,28 @@ function Fact({ label, value }: { label: string; value?: string | number | null 
   )
 }
 
-export function NodeDetail({ node }: { node: Node }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("resources")
-  // Each tab keeps its own range: a 7-day trend and a 1-hour trace answer
-  // different questions.
-  const [ranges, setRanges] = useState({ resources: 6, latency: 6 })
-  const hours = ranges[tab]
-  const [smooth, setSmooth] = useState(false)
-  // Probes switched off. Hiding a slow one is what makes the fast ones readable,
-  // as the axis rescales to what remains.
-  const [hiddenProbes, setHiddenProbes] = useState<number[]>([])
-  const [data, setData] = useState<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss } | null>(null)
-  // Retained rather than folded into an empty result: a refused request and an
-  // empty window are different answers, and the hub has reason to refuse this one
-  // -- it caps how many history windows it builds concurrently, since each holds
-  // the connection the agents report through. Rendered as an empty window, a 503
-  // would misdirect the reader.
+type History = { metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss }
+
+/**
+ * One window of history, or nothing while `series` is null.
+ *
+ * A refused request is kept apart from an empty window. The hub builds at most
+ * four windows at once, since each holds the connection the agents report
+ * through, and answers a fifth with a 503; drawn as an empty chart, that answer
+ * would misdirect the reader, so callers show it with a retry.
+ */
+function useHistory(id: number, hours: number, series: "metrics" | "ping" | null) {
+  const [data, setData] = useState<History | null>(null)
   const [failed, setFailed] = useState("")
-  // Where the brush has been dragged, so the axis reticks for the visible span
-  // rather than retaining the whole window's ticks.
-  const [zoom, setZoom] = useState<[number, number] | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
+    if (!series) return
     let active = true
-    // The charts must not continue drawing the old range while the new one is in
+    // The charts must not continue drawing the old window while the new one is in
     // flight.
     // oxlint-disable-next-line react/set-state-in-effect
     setData(null)
-    // oxlint-disable-next-line react/set-state-in-effect
-    setZoom(null)
     // oxlint-disable-next-line react/set-state-in-effect
     setFailed("")
     // What this screen can resolve, in device pixels, which is the unit the line
@@ -183,13 +177,10 @@ export function NodeDetail({ node }: { node: Node }) {
     // approximate figure suffices, and the viewport is known before layout. A
     // rotation keeps whatever it fetched with.
     //
-    // The tab determines which half is requested; the other accounted for a third
-    // to two thirds of every response and was never drawn.
+    // Only the half on screen is requested; the other accounted for a third to two
+    // thirds of every response and was never drawn.
     const points = Math.round(globalThis.innerWidth * (globalThis.devicePixelRatio || 1))
-    const series = tab === "latency" ? "ping" : "metrics"
-    api<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss }>(
-      `/nodes/${node.id}/metrics?hours=${hours}&points=${points}&series=${series}`,
-    )
+    api<History>(`/nodes/${id}/metrics?hours=${hours}&points=${points}&series=${series}`)
       .then((next) => { if (active) setData(next) })
       .catch((e: Error) => {
         // `|| "..."` as in App.tsx: HTTP/2 dropped statusText, so a bodiless
@@ -198,12 +189,56 @@ export function NodeDetail({ node }: { node: Node }) {
         if (active) { setFailed(e.message || "网络错误"); setData({ metrics: [], ping: [], probes: {} }) }
       })
     return () => { active = false }
-  }, [node.id, hours, tab])
+  }, [id, hours, series, attempt])
 
-  const m = node.metrics
-  const away = node.last_seen ? Date.now() / 1000 - node.last_seen : 0
+  return { data, failed, retry: () => setAttempt((n) => n + 1) }
+}
+
+function Failed({ message, retry }: { message: string; retry: () => void }) {
+  return (
+    <p className="py-8 text-center text-sm text-destructive" role="alert">
+      读取历史数据失败：{message}
+      <button onClick={retry} className="ml-2 text-primary hover:underline">重试</button>
+    </p>
+  )
+}
+
+// A real time axis rather than the category axis recharts defaults to: on a
+// category axis ticks are selected by index, so a period the agent was offline for
+// collapses to nothing.
+function timeAxis(rows: { ts: number }[], hours: number, from = 0, to = rows.length - 1) {
+  return {
+    dataKey: "ts",
+    type: "number" as const,
+    domain: ["dataMin", "dataMax"] as const,
+    // Explicit, or recharts places them at 05:14 and 10:22. Any that still collide
+    // are dropped by `minTickGap`.
+    ticks: rows.length ? timeTicks(rows[from].ts, rows[to].ts) : undefined,
+    tickFormatter: clockFor(hours),
+    minTickGap: hours > 24 ? 72 : 40,
+    ...AXIS,
+  }
+}
+
+/**
+ * Every probe's round trip to one node, as the chart page and the table's
+ * expanded row both draw it: the legend above, sized to its chips, and the plot
+ * with its brush below at the height `className` gives it.
+ */
+export function Latency({ id, hours, smooth = false, className }: {
+  id: number; hours: number; smooth?: boolean; className?: string
+}) {
+  const { data, failed, retry } = useHistory(id, hours, "ping")
+  // Probes switched off. Hiding a slow one is what makes the fast ones readable,
+  // as the axis rescales to what remains.
+  const [hiddenProbes, setHiddenProbes] = useState<number[]>([])
+  // Where the brush has been dragged, so the axis reticks for the visible span.
+  // Tagged with the window it was dragged on, so a new window starts unzoomed
+  // without an effect to clear it.
+  const [zoom, setZoom] = useState<{ of: History; range: [number, number] } | null>(null)
+
   // One series per probe that reported, labelled from the names the samples
-  // arrived with. Memoised, as are the two below: the node prop changes every few
+  // arrived with. Memoised, as are the two below: the parent re-renders every few
   // seconds as live metrics arrive, and rebuilding the chart's data array on those
   // renders would reset the brush.
   const pingSeries = useMemo(
@@ -216,37 +251,13 @@ export function NodeDetail({ node }: { node: Node }) {
           const points = (data?.ping ?? []).filter((p) => p.task_id === id)
           // Taken from the hub rather than summed from the buckets above, each of
           // which is already a percentage of its own bucket, so averaging them
-          // would report one lost round in thirteen as 50%. Left unrounded, since
-          // `Math.round` would render 0.28% and 0.00% as the same badge, and the
-          // absence of a badge denotes no loss.
+          // would report one lost round in thirteen as 50%.
           const loss = data?.loss?.[id] ?? 0
           return { id, name: data?.probes?.[id] ?? `探测 ${id}`, points, loss }
         })
         .filter((s) => s.points.length > 0),
     [data],
   )
-
-  // The hub answers in seconds; the time axis requires milliseconds.
-  const metricRows = useMemo(
-    () => (data?.metrics ?? []).map((m) => ({ ...m, ts: m.ts * 1_000 })),
-    [data],
-  )
-
-  // Axis tops for the two panels with no capacity to measure against. CPU and a
-  // transfer rate do not express fullness: against a fixed 0-100, a machine
-  // sitting at 0.4% draws as a line along the panel's floor. Memory and disk keep
-  // their totals as tops, where fullness is the entire question.
-  const tops = useMemo(() => {
-    const max = (pick: (m: Point) => number) =>
-      metricRows.reduce((hi, m) => Math.max(hi, pick(m)), 0)
-    return {
-      // A floor of 4%, or a machine that never exceeds 0.4% would get an axis of
-      // 0-0.4 and render every scheduler blip as a peak. Capped at 100.
-      cpu: axisTop(max((m) => m.cpu), 4, 10, 100),
-      // Base 1024, so the steps are round in the unit `axisBytes` prints.
-      rate: axisTop(max((m) => Math.max(m.net_rx, m.net_tx)), 1024, 1024),
-    }
-  }, [metricRows])
 
   const shownProbes = useMemo(
     () => pingSeries.filter((s) => !hiddenProbes.includes(s.id)),
@@ -279,28 +290,164 @@ export function NodeDetail({ node }: { node: Node }) {
         row[`s${s.id}`] = smoothed[i].latency
         row[`l${s.id}`] = p.loss ?? 0
         // Raw, never despiked: the band exists to show what the line omits, and
-        // smoothing it would omit the same points.
-        row[`b${s.id}`] = p.band ?? null
+        // smoothing it would omit the same points. A bucket with a single answer
+        // carries no band and spans only that answer. Left null, `connectNulls`
+        // would bridge the hours between the few buckets that have one: 9 of
+        // 1,438 in a day, the widest gap 268 minutes, drawn as one large wedge.
+        row[`b${s.id}`] = p.band ?? (p.latency === null ? null : [p.latency, p.latency])
         rows.set(p.ts, row)
       })
     }
     return [...rows.values()].sort((a, b) => a.ts - b.ts)
   }, [pingSeries])
 
-  // A real time axis rather than the category axis recharts defaults to: on a
-  // category axis ticks are selected by index, so a period the agent was offline
-  // for collapses to nothing.
-  const timeAxis = (rows: { ts: number }[], from = 0, to = rows.length - 1) => ({
-    dataKey: "ts",
-    type: "number" as const,
-    domain: ["dataMin", "dataMax"] as const,
-    // Explicit, or recharts places them at 05:14 and 10:22. Any that still collide
-    // are dropped by `minTickGap`.
-    ticks: rows.length ? timeTicks(rows[from].ts, rows[to].ts) : undefined,
-    tickFormatter: clockFor(hours),
-    minTickGap: hours > 24 ? 72 : 40,
-    ...AXIS,
-  })
+  if (!data) return <Skeleton className={cn("w-full", className)} />
+  if (failed) return <Failed message={failed} retry={retry} />
+  if (pingSeries.length === 0) {
+    return <p className="py-8 text-center text-sm text-muted-foreground">这段时间没有延迟数据</p>
+  }
+  const last = pingRows.length - 1
+  const [from, to] = zoom?.of === data ? zoom.range.map((i) => Math.min(i, last)) : [0, last]
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-center gap-1.5">
+        {pingSeries.map((s) => {
+          const shown = !hiddenProbes.includes(s.id)
+          return (
+            <button
+              key={s.id}
+              onClick={() =>
+                setHiddenProbes((h) => (shown ? [...h, s.id] : h.filter((id) => id !== s.id)))
+              }
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-opacity ${
+                shown ? "" : "opacity-40"
+              }`}
+            >
+              {/* The swatch carries the same colour as the line. */}
+              <svg width="14" height="6" className="shrink-0" aria-hidden>
+                <line x1="0" y1="3" x2="14" y2="3" stroke={color(s.id)} strokeWidth="2" />
+              </svg>
+              {s.name}
+              {/* Always shown, since the line is only what answered and a probe
+                  dropping half its packets draws like a healthy one. Anything
+                  under a tenth is written as such rather than rounded to 0.0. */}
+              <span className="tabular-nums opacity-60">
+                {s.loss > 0 && s.loss < 0.1 ? "<0.1" : s.loss.toFixed(1)}%
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className={cn("w-full text-muted-foreground", className)}>
+        {shownProbes.length === 0 ? (
+          <p className="py-8 text-center text-sm">没有选中任何探测</p>
+        ) : (
+          <ResponsiveContainer>
+            <ComposedChart data={pingRows}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <XAxis {...timeAxis(pingRows, hours, from, to)} />
+              {/* Not anchored at zero: these lines live in a narrow band far from
+                  it, and zero flattens every wobble. */}
+              <YAxis unit="ms" width={52} domain={["auto", "auto"]} {...AXIS} />
+              <Tooltip
+                labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                // The line is drawn from what answered, so without this a bucket
+                // that lost most of its packets reads as normal. `dataKey` is
+                // `t7`/`s7`; the loss sits at `l7`.
+                formatter={(v, name, item) => {
+                  const loss = Number(item?.payload?.[`l${String(item.dataKey).slice(1)}`] ?? 0)
+                  return [`${Number(v)} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
+                }}
+                contentStyle={TIP}
+              />
+              {/* Behind the line, the range that bucket's answers spanned --
+                  Smokeping's "smoke". At the day window a bucket moves 63 ms at
+                  the 90th percentile against the 25 ms the trend moves, so a line
+                  alone draws the smaller of the two.
+
+                  Only with one probe on screen: rendered for four, the bands
+                  overlap into a fog and their extremes drag the axis from 165-385
+                  out to 140-420. */}
+              {shownProbes.length === 1 &&
+                shownProbes.map((s) => (
+                  <Area
+                    key={`band${s.id}`}
+                    dataKey={`b${s.id}`}
+                    stroke="none"
+                    fill={color(s.id)}
+                    fillOpacity={0.16}
+                    isAnimationActive={false}
+                    tooltipType="none"
+                    legendType="none"
+                    connectNulls
+                  />
+                ))}
+              {shownProbes.map((s) => (
+                <Line
+                  key={s.id}
+                  dataKey={`${smooth ? "s" : "t"}${s.id}`}
+                  name={s.name}
+                  stroke={color(s.id)}
+                  {...SERIES}
+                  connectNulls
+                />
+              ))}
+              {/* Drag either handle to zoom into a stretch of the trend. */}
+              <Brush
+                dataKey="ts"
+                height={22}
+                travellerWidth={8}
+                tickFormatter={clockFor(hours)}
+                // A prop rather than a class: recharts writes fill="#fff" onto the
+                // rect itself, which a class cannot override.
+                fill="var(--color-muted)"
+                stroke="var(--color-muted-foreground)"
+                onChange={(r) => setZoom({ of: data, range: [r.startIndex ?? 0, r.endIndex ?? last] })}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function NodeDetail({ node }: { node: Node }) {
+  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("resources")
+  // Each tab keeps its own range: a 7-day trend and a 1-hour trace answer
+  // different questions.
+  const [ranges, setRanges] = useState({ resources: 6, latency: 6 })
+  const hours = ranges[tab]
+  const [smooth, setSmooth] = useState(false)
+  // The latency tab fetches for itself, inside `Latency`.
+  const { data, failed, retry } = useHistory(node.id, ranges.resources, tab === "resources" ? "metrics" : null)
+
+  const m = node.metrics
+  const away = node.last_seen ? Date.now() / 1000 - node.last_seen : 0
+
+  // The hub answers in seconds; the time axis requires milliseconds.
+  const metricRows = useMemo(
+    () => (data?.metrics ?? []).map((m) => ({ ...m, ts: m.ts * 1_000 })),
+    [data],
+  )
+
+  // Axis tops for the two panels with no capacity to measure against. CPU and a
+  // transfer rate do not express fullness: against a fixed 0-100, a machine
+  // sitting at 0.4% draws as a line along the panel's floor. Memory and disk keep
+  // their totals as tops, where fullness is the entire question.
+  const tops = useMemo(() => {
+    const max = (pick: (m: Point) => number) =>
+      metricRows.reduce((hi, m) => Math.max(hi, pick(m)), 0)
+    return {
+      // A floor of 4%, or a machine that never exceeds 0.4% would get an axis of
+      // 0-0.4 and render every scheduler blip as a peak. Capped at 100.
+      cpu: axisTop(max((m) => m.cpu), 4, 10, 100),
+      // Base 1024, so the steps are round in the unit `axisBytes` prints.
+      rate: axisTop(max((m) => Math.max(m.net_rx, m.net_tx)), 1024, 1024),
+    }
+  }, [metricRows])
 
   return (
     <div className="space-y-4">
@@ -381,144 +528,12 @@ export function NodeDetail({ node }: { node: Node }) {
         </div>
       </div>
 
-      {!data ? (
+      {tab === "latency" ? (
+        <Latency id={node.id} hours={hours} smooth={smooth} className="h-[420px] max-md:h-[320px]" />
+      ) : !data ? (
         <Skeleton className="h-40 w-full" />
       ) : failed ? (
-        <p className="py-8 text-center text-sm text-destructive" role="alert">读取历史数据失败：{failed}</p>
-      ) : tab === "latency" ? (
-        pingSeries.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">这段时间没有延迟数据</p>
-        ) : (
-          // A fixed height on the column, so the chart can be `flex-1` within it
-          // while the legend takes what it needs: four probes are one row of chips
-          // on a desktop and two on a phone.
-          <div className="flex h-[460px] flex-col gap-3 max-md:h-[360px]">
-            {/* `min-h-0` is what makes `flex-1` a real number rather than the
-                content's own height: ResponsiveContainer reads its parent, and a
-                flex child not told it may shrink reports whatever the SVG last
-                was. */}
-            <div className="min-h-0 w-full flex-1 text-muted-foreground">
-              {shownProbes.length === 0 ? (
-                <p className="py-8 text-center text-sm">没有选中任何探测</p>
-              ) : (
-                <ResponsiveContainer>
-                  <ComposedChart data={pingRows}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                    <XAxis
-                      {...timeAxis(
-                        pingRows,
-                        Math.min(zoom?.[0] ?? 0, pingRows.length - 1),
-                        Math.min(zoom?.[1] ?? pingRows.length - 1, pingRows.length - 1),
-                      )}
-                    />
-                    {/* Not anchored at zero: these lines live in a narrow band
-                        far from it, and zero flattens every wobble. */}
-                    <YAxis unit="ms" width={52} domain={["auto", "auto"]} {...AXIS} />
-                    <Tooltip
-                      labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
-                      // The line is drawn from what answered, so without this a
-                      // bucket that lost most of its packets reads as normal.
-                      // `dataKey` is `t7`/`s7`; the loss sits at `l7`.
-                      formatter={(v, name, item) => {
-                        const loss = Number(item?.payload?.[`l${String(item.dataKey).slice(1)}`] ?? 0)
-                        return [`${Number(v)} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
-                      }}
-                      contentStyle={TIP}
-                    />
-                    {/* Behind the line, the range that bucket's answers
-                        spanned -- Smokeping's "smoke". At the day window a
-                        bucket moves 63 ms at the 90th percentile against the
-                        25 ms the trend moves, so a line alone draws the smaller
-                        of the two.
-
-                        Only with one probe on screen: rendered for four, the
-                        bands overlap into a fog and their extremes drag the
-                        axis from 165-385 out to 140-420. */}
-                    {shownProbes.length === 1 &&
-                      shownProbes.map((s) => (
-                        <Area
-                          key={`band${s.id}`}
-                          dataKey={`b${s.id}`}
-                          stroke="none"
-                          fill={color(s.id)}
-                          fillOpacity={0.16}
-                          isAnimationActive={false}
-                          tooltipType="none"
-                          legendType="none"
-                          connectNulls
-                        />
-                      ))}
-                    {shownProbes.map((s) => (
-                      <Line
-                        key={s.id}
-                        dataKey={`${smooth ? "s" : "t"}${s.id}`}
-                        name={s.name}
-                        stroke={color(s.id)}
-                        {...SERIES}
-                        connectNulls
-                      />
-                    ))}
-                    {/* Drag either handle to zoom into a stretch of the trend. */}
-                    <Brush
-                      dataKey="ts"
-                      height={22}
-                      travellerWidth={8}
-                      tickFormatter={clockFor(hours)}
-                      // A prop rather than a class: recharts writes fill="#fff"
-                      // onto the rect itself, which a class cannot override.
-                      fill="var(--color-muted)"
-                      stroke="var(--color-muted-foreground)"
-                      onChange={(r) => setZoom([r.startIndex ?? 0, r.endIndex ?? pingRows.length - 1])}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-
-            {/* Under the chart: what it covers is picked at the top, what is
-                drawn in it is picked here. Recharts paints the brush into the
-                same SVG as the axis, so this is as close beneath as HTML
-                sits. */}
-            {(pingSeries.length > 1 || pingSeries.some((s) => s.loss > 0)) && (
-            <div className="flex flex-wrap items-center justify-center gap-1.5">
-              {pingSeries.map((s) => {
-                const shown = !hiddenProbes.includes(s.id)
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() =>
-                      setHiddenProbes((h) => (shown ? [...h, s.id] : h.filter((id) => id !== s.id)))
-                    }
-                    className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-opacity ${
-                      shown ? "" : "opacity-40"
-                    }`}
-                  >
-                    {/* The swatch carries the same colour as the line. */}
-                    <svg width="14" height="6" className="shrink-0" aria-hidden>
-                      <line
-                        x1="0"
-                        y1="3"
-                        x2="14"
-                        y2="3"
-                        stroke={color(s.id)}
-                        strokeWidth="2"
-                      />
-                    </svg>
-                    {s.name}
-                    {/* The line is only what answered, so a probe dropping
-                        half its packets draws like a healthy one. */}
-                    {s.loss > 0 && (
-                      <span className="tabular-nums opacity-60">
-                        丢 {s.loss < 1 ? "<1" : Math.round(s.loss)}%
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            )}
-          </div>
-        )
+        <Failed message={failed} retry={retry} />
       ) : data.metrics.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">这段时间没有历史数据</p>
       ) : (
@@ -527,7 +542,7 @@ export function NodeDetail({ node }: { node: Node }) {
             <ResponsiveContainer>
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows)} />
+                <XAxis {...timeAxis(metricRows, hours)} />
                 <YAxis domain={[0, tops.cpu]} ticks={quarters(tops.cpu)} unit="%" width={Y_WIDTH} {...AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
@@ -548,7 +563,7 @@ export function NodeDetail({ node }: { node: Node }) {
             <ResponsiveContainer>
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows)} />
+                <XAxis {...timeAxis(metricRows, hours)} />
                 <YAxis domain={[0, node.mem_total]} ticks={quarters(node.mem_total)} tickFormatter={axisBytes} width={Y_WIDTH} {...AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
@@ -574,7 +589,7 @@ export function NodeDetail({ node }: { node: Node }) {
             <ResponsiveContainer>
               <LineChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows)} />
+                <XAxis {...timeAxis(metricRows, hours)} />
                 <YAxis domain={[0, tops.rate]} ticks={quarters(tops.rate)} tickFormatter={axisBytes} unit="/s" width={Y_WIDTH} {...AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
@@ -594,7 +609,7 @@ export function NodeDetail({ node }: { node: Node }) {
             <ResponsiveContainer>
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows)} />
+                <XAxis {...timeAxis(metricRows, hours)} />
                 <YAxis domain={[0, node.disk_total]} ticks={quarters(node.disk_total)} tickFormatter={axisBytes} width={Y_WIDTH} {...AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
