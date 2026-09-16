@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react"
+import { lazy, Suspense, useState, type ReactNode } from "react"
 
+import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { Node } from "@/lib/api"
 import {
@@ -21,6 +22,10 @@ const FLAGS = Object.fromEntries(
     }),
   ).map(([path, url]) => [path.match(/([\w-]+)\.svg$/)![1], url]),
 )
+
+// From the chart page's chunk, which App warms at start, so the table itself
+// carries no recharts.
+const Latency = lazy(() => import("@/components/NodeDetail").then((m) => ({ default: m.Latency })))
 
 /** A node that has reported once knows its shape; one that never connected has nothing to show. */
 export function deployed(node: Node) {
@@ -149,6 +154,13 @@ function Details({ node }: { node: Node }) {
           {node.expires_at ? `${node.expires_at} 到期` : "长期有效"}
         </Line>
         {node.agent_version && <Line label="agent">{node.agent_version}</Line>}
+      </div>
+      {/* The last day only, fetched when the row opens: the range and the
+          resource charts are one click away on the chart page. */}
+      <div className="mt-3">
+        <Suspense fallback={<Skeleton className="h-[280px] @max-3xl:h-[220px]" />}>
+          <Latency id={node.id} hours={24} className="h-[280px] @max-3xl:h-[220px]" />
+        </Suspense>
       </div>
       <Link href={`/node/${node.id}`} className="mt-1.5 inline-block text-primary hover:underline">
         查看监控图表 →
