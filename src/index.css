@@ -1,0 +1,129 @@
+/* Scan this app's own source and nothing else. Tailwind's automatic detection
+   walks the whole repository, so a word in a workflow or a README would become a
+   utility class in the shipped stylesheet and change every asset hash. */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* One cool slate hue carries the neutrals; the accents sit at chroma 0.06-0.13 so
+   the page reads as coloured while no single hue dominates. */
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.968 0.005 255);
+  --foreground: oklch(0.28 0.02 258);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.28 0.02 258);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.28 0.02 258);
+  --primary: oklch(0.5 0.08 252);
+  --primary-foreground: oklch(0.985 0.004 250);
+  --secondary: oklch(0.955 0.008 252);
+  --secondary-foreground: oklch(0.28 0.02 258);
+  --muted: oklch(0.955 0.006 252);
+  --muted-foreground: oklch(0.54 0.018 256);
+  --accent: oklch(0.94 0.014 252);
+  --accent-foreground: oklch(0.28 0.02 258);
+  --destructive: oklch(0.55 0.13 27);
+  --border: oklch(0.91 0.008 252);
+  --input: oklch(0.88 0.01 252);
+  --ring: oklch(0.62 0.06 252);
+  --chart-1: oklch(0.56 0.09 252);
+  --chart-2: oklch(0.62 0.08 162);
+  --chart-3: oklch(0.7 0.1 72);
+  --chart-4: oklch(0.58 0.09 342);
+  --chart-5: oklch(0.62 0.06 212);
+  /* Text and dots. Amber reads as text only well below the lightness of its
+     bar, so the two are separate tokens. */
+  --ok: oklch(0.63 0.1 155);
+  --warn: oklch(0.6 0.11 68);
+  --danger: oklch(0.58 0.13 27);
+  /* Bar fills sit under a label in --foreground, so they stay light here and
+     dark in the dark theme: the percentage must read on both halves of the bar. */
+  --bar-track: oklch(0.945 0.006 252);
+  --bar-ok: oklch(0.82 0.075 158);
+  --bar-warn: oklch(0.85 0.09 80);
+  --bar-danger: oklch(0.8 0.09 27);
+}
+
+.dark {
+  --background: oklch(0.2 0.012 262);
+  --foreground: oklch(0.93 0.006 255);
+  --card: oklch(0.24 0.014 262);
+  --card-foreground: oklch(0.93 0.006 255);
+  --popover: oklch(0.26 0.014 262);
+  --popover-foreground: oklch(0.93 0.006 255);
+  --primary: oklch(0.75 0.07 252);
+  --primary-foreground: oklch(0.2 0.012 262);
+  --secondary: oklch(0.29 0.014 262);
+  --secondary-foreground: oklch(0.93 0.006 255);
+  --muted: oklch(0.29 0.014 262);
+  --muted-foreground: oklch(0.7 0.014 256);
+  --accent: oklch(0.3 0.02 258);
+  --accent-foreground: oklch(0.93 0.006 255);
+  --destructive: oklch(0.7 0.12 27);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.6 0.06 252);
+  --chart-1: oklch(0.72 0.08 252);
+  --chart-2: oklch(0.72 0.08 162);
+  --chart-3: oklch(0.78 0.1 76);
+  --chart-4: oklch(0.7 0.09 342);
+  --chart-5: oklch(0.74 0.06 212);
+  --ok: oklch(0.72 0.09 155);
+  --warn: oklch(0.8 0.1 76);
+  --danger: oklch(0.7 0.12 27);
+  --bar-track: oklch(0.19 0.012 262);
+  --bar-ok: oklch(0.45 0.065 158);
+  --bar-warn: oklch(0.5 0.08 70);
+  --bar-danger: oklch(0.46 0.1 27);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-bar-track: var(--bar-track);
+  --color-bar-ok: var(--bar-ok);
+  --color-bar-warn: var(--bar-warn);
+  --color-bar-danger: var(--bar-danger);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  /* Without a reserved gutter, leaving a page taller than the fold widens it. */
+  html { scrollbar-gutter: stable; }
+  body { @apply bg-background text-foreground; }
+}
+
+/* Tabular figures keep live numbers from shifting as they update. */
+.tnum { font-variant-numeric: tabular-nums; }
