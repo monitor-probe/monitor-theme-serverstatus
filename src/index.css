@@ -1,0 +1,135 @@
+/* Scan this app's own source and nothing else. Tailwind's automatic detection
+   walks the whole repository, so a word in a workflow or a README would become a
+   utility class in the shipped stylesheet and change every asset hash. */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* The classic ServerStatus palette: Bootstrap 3's greys, its green, amber and red
+   as top-to-bottom gradients on bars and status dots, and a navy-grey dark mode.
+   The chart hues are separate and muted, so five probes stay distinguishable
+   without competing with the bars. */
+:root {
+  --radius: 0.375rem;
+  --background: #f5f5f5;
+  --foreground: #212121;
+  --card: #ffffff;
+  --card-foreground: #212121;
+  --popover: #ffffff;
+  --popover-foreground: #212121;
+  --primary: #337ab7;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #212121;
+  --muted: #f9f9f9;
+  --muted-foreground: #777777;
+  --accent: #e6e6e6;
+  --accent-foreground: #212121;
+  --destructive: #a94442;
+  --border: #dddddd;
+  --input: #cccccc;
+  --ring: #66afe9;
+  --nav: #f9f9f9;
+  --chart-1: oklch(0.56 0.09 252);
+  --chart-2: oklch(0.62 0.08 162);
+  --chart-3: oklch(0.7 0.1 72);
+  --chart-4: oklch(0.58 0.09 342);
+  --chart-5: oklch(0.62 0.06 212);
+  /* Text on the card. Bootstrap's own text shades, since the bar colours are too
+     light to read as text on white. */
+  --warn: #8a6d3b;
+  --danger: #a94442;
+  --bar-track: #f5f5f5;
+  --bar-text: #000000;
+  --bar-ok: linear-gradient(rgb(92 184 92), rgb(68 157 68));
+  --bar-warn: linear-gradient(rgb(240 173 78), rgb(236 151 31));
+  --bar-danger: linear-gradient(rgb(217 83 79), rgb(201 48 44));
+  --dot-online: var(--bar-ok);
+  --dot-offline: var(--bar-danger);
+}
+
+.dark {
+  --background: #31363b;
+  --foreground: #f1f1f1;
+  --card: #1c1d26;
+  --card-foreground: #f1f1f1;
+  --popover: #22232e;
+  --popover-foreground: #f1f1f1;
+  --primary: #4992ff;
+  --primary-foreground: #ffffff;
+  --secondary: #22232e;
+  --secondary-foreground: #f1f1f1;
+  --muted: #22232e;
+  --muted-foreground: #aaaaaa;
+  --accent: #303241;
+  --accent-foreground: #f1f1f1;
+  --destructive: #e0605c;
+  --border: #3a3e41;
+  --input: rgb(255 255 255 / 15%);
+  --ring: #4992ff;
+  --nav: #1c2127;
+  --chart-1: oklch(0.72 0.08 252);
+  --chart-2: oklch(0.72 0.08 162);
+  --chart-3: oklch(0.78 0.1 76);
+  --chart-4: oklch(0.7 0.09 342);
+  --chart-5: oklch(0.74 0.06 212);
+  --warn: #f0ad4e;
+  --danger: #e0605c;
+  --bar-track: rgb(255 255 255 / 7.5%);
+  --bar-text: #ffffff;
+  /* Darker and horizontal on the dark ground, which is what lets white labels
+     read on the fill. */
+  --bar-ok: linear-gradient(to right, rgb(77 133 58), rgb(54 126 54));
+  --bar-warn: linear-gradient(to right, rgb(153 95 13), rgb(181 113 15));
+  --bar-danger: linear-gradient(to right, rgb(145 35 32), rgb(161 38 35));
+  --dot-online: linear-gradient(rgb(77 133 58), rgb(54 126 54));
+  --dot-offline: linear-gradient(rgb(155 37 34), rgb(161 38 35));
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-nav: var(--nav);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-bar-track: var(--bar-track);
+  --color-bar-text: var(--bar-text);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  /* Without a reserved gutter, leaving a page taller than the fold widens it. */
+  html { scrollbar-gutter: stable; }
+  body { @apply bg-background text-foreground; }
+}
+
+/* Tabular figures keep live numbers from shifting as they update. */
+.tnum { font-variant-numeric: tabular-nums; }
