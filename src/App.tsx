@@ -55,7 +55,7 @@ function NavItem({ href, active, icon: Icon, children }: { href: string; active:
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className="inline-flex items-center gap-1.5 px-3.5 text-sm transition-colors hover:text-primary aria-[current=page]:text-primary max-sm:px-2.5"
+      className="inline-flex items-center gap-1.5 px-3.5 text-sm transition-colors hover:bg-white/10 aria-[current=page]:bg-white/15 aria-[current=page]:font-medium max-sm:px-2.5"
     >
       <Icon className="size-3.5" />
       {children}
@@ -111,10 +111,11 @@ export default function App() {
 
   return (
     <div className="flex min-h-svh flex-col">
-      <header className="sticky top-0 z-10 border-b bg-card/95 shadow-sm backdrop-blur">
+      <header className="sticky top-0 z-10 bg-header text-header-foreground shadow-md">
         <div className="mx-auto flex h-12 w-[95vw] max-w-[1680px] items-stretch max-md:w-full max-md:px-2">
           <Link href="/" className="mr-5 flex min-w-0 items-center gap-2 text-lg max-sm:mr-1 max-sm:text-base">
-            <img src="/favicon.svg" alt="" className="size-5 shrink-0" />
+            {/* On a white tile: the icon is blue and the bar behind it is too. */}
+            <img src="/favicon.svg" alt="" className="size-6 shrink-0 rounded bg-white p-0.5" />
             <span className="truncate">{site}</span>
           </Link>
           <nav className="flex shrink-0 items-stretch">
@@ -125,7 +126,7 @@ export default function App() {
           </nav>
           {/* The panel is a separate app built into the hub, so this is a
               navigation rather than a route. */}
-          <a href="/admin/" className="ml-auto inline-flex shrink-0 items-center gap-1.5 px-3.5 text-sm transition-colors hover:text-primary max-sm:px-2">
+          <a href="/admin/" className="ml-auto inline-flex shrink-0 items-center gap-1.5 px-3.5 text-sm transition-colors hover:bg-white/10 max-sm:px-2">
             <UserRound className="size-3.5" />
             <span className="max-sm:sr-only">{me.authed ? "后台" : "登录"}</span>
           </a>

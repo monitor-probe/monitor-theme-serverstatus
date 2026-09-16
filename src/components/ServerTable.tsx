@@ -1,4 +1,8 @@
-import { lazy, Suspense, useState, type ReactNode } from "react"
+import { lazy, Suspense, useState, type CSSProperties, type ReactNode } from "react"
+import {
+  siAlmalinux, siAlpinelinux, siArchlinux, siCentos, siDebian, siFedora, siLinux, siOpensuse, siRedhat,
+  siRockylinux, siUbuntu, type SimpleIcon,
+} from "simple-icons"
 
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -23,8 +27,6 @@ const FLAGS = Object.fromEntries(
   ).map(([path, url]) => [path.match(/([\w-]+)\.svg$/)![1], url]),
 )
 
-// From the chart page's chunk, which App warms at start, so the table itself
-// carries no recharts.
 const Latency = lazy(() => import("@/components/NodeDetail").then((m) => ({ default: m.Latency })))
 
 /** A node that has reported once knows its shape; one that never connected has nothing to show. */
@@ -53,6 +55,36 @@ export function Flag({ code, className }: { code: string; className?: string }) 
       {src && <img src={src} alt="" className="h-3 w-4 shrink-0 rounded-[2px] object-cover ring-1 ring-foreground/10" />}
       <span className="@max-3xl:hidden">{code}</span>
     </span>
+  )
+}
+
+// Matched against the whole release name, since "Red Hat Enterprise Linux" and
+// "Raspbian GNU/Linux" do not lead with one word to key on. The distributions a
+// VPS ships with; the rest take the penguin. Each logo costs 1-6 KB of entry
+// bundle, the Raspberry Pi alone 12 KB, so the list stays at what hosts offer.
+const DISTROS: [string, SimpleIcon][] = [
+  ["debian", siDebian], ["raspbian", siDebian], ["ubuntu", siUbuntu], ["alpine", siAlpinelinux],
+  ["centos", siCentos], ["rocky", siRockylinux], ["almalinux", siAlmalinux], ["red hat", siRedhat],
+  ["fedora", siFedora], ["arch", siArchlinux], ["opensuse", siOpensuse],
+]
+
+/**
+ * The distribution's logo in its brand colour. Mixed toward white on the dark
+ * theme, where AlmaLinux's black and CentOS's navy would otherwise vanish.
+ */
+export function OsIcon({ os, className }: { os: string; className?: string }) {
+  if (!os) return null
+  const name = os.toLowerCase()
+  const icon = DISTROS.find(([key]) => name.includes(key))?.[1] ?? siLinux
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden
+      style={{ "--brand": `#${icon.hex}` } as CSSProperties}
+      className={cn("size-3.5 shrink-0 fill-(--brand) dark:fill-[color-mix(in_oklab,var(--brand)_60%,white)]", className)}
+    >
+      <path d={icon.path} />
+    </svg>
   )
 }
 
@@ -99,73 +131,110 @@ const COL = {
   bar: "w-[7.5%] min-w-22 @max-3xl:w-[11%] @max-3xl:min-w-0",
 }
 
-function Line({ label, children }: { label: string; children: ReactNode }) {
+/** A label over its value, with an optional muted line under both. */
+function Stat({ label, value, note }: { label: string; value: ReactNode; note?: ReactNode }) {
   return (
     <div className="min-w-0 break-words">
-      <span className="text-muted-foreground">{label}：</span>
-      {children}
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="tnum mt-0.5 text-sm font-medium @max-3xl:text-[13px]">{value}</div>
+      {note && <div className="tnum mt-0.5 text-xs text-muted-foreground">{note}</div>}
     </div>
   )
 }
 
 function Details({ node }: { node: Node }) {
-  if (!deployed(node)) {
-    return <p className="text-muted-foreground">尚未接入。在后台生成安装命令并执行一次。</p>
-  }
   const m = node.online ? node.metrics : null
-  const usage = (used: number, total: number) => `${pair(used, total)}（${percent(used, total).toFixed(1)}%）`
-  const flow = (rx: number, tx: number) => `↓ ${bytes(rx)} · ↑ ${bytes(tx)}`
+  const share = (used: number, total: number) => `${percent(used, total).toFixed(1)}%`
+  const flow = (rx: number, tx: number) => `↓ ${bytes(rx)}  ↑ ${bytes(tx)}`
   const away = node.last_seen ? Date.now() / 1000 - node.last_seen : 0
-  const virt = node.virt && node.virt !== "none" ? `${node.virt}:` : ""
+  const days = daysUntil(node.expires_at)
 
   return (
-    <>
-      <div className="grid gap-x-10 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
-        <Line label="系统">
-          {[osName(node.os), node.kernel].filter(Boolean).join(" · ")} [{virt}{node.arch || "—"}]
-        </Line>
-        <Line label="CPU">
-          {node.cpu_name ? `${cpuName(node.cpu_name)} × ${node.cpu_cores}` : `${node.cpu_cores} 核`}
-          {m && `（${m.cpu.toFixed(1)}%）`}
-        </Line>
-        <Line label="负载">{m ? m.load.map((n) => n.toFixed(2)).join(" / ") : "—"}</Line>
-        <Line label="内存">{m ? usage(m.mem_used, m.mem_total) : bytes(node.mem_total)}</Line>
-        <Line label="交换">
-          {node.swap_total > 0 ? (m ? usage(m.swap_used, m.swap_total) : bytes(node.swap_total)) : "未启用"}
-        </Line>
-        <Line label="硬盘">{m ? usage(m.disk_used, m.disk_total) : bytes(node.disk_total)}</Line>
-        <Line label="网速">{m ? `↓ ${rate(m.net_rx)} · ↑ ${rate(m.net_tx)}` : "—"}</Line>
-        <Line label="进程 / 连接">{m ? `${m.procs} · TCP ${m.tcp} · UDP ${m.udp}` : "—"}</Line>
-        <Line label={node.online ? "在线" : "离线"}>
-          {node.online ? (m ? uptime(m.uptime) : "等待上报") : away >= 60 ? uptime(away) : "刚刚"}
-        </Line>
-        <Line label="今日流量">{flow(node.day_rx, node.day_tx)}</Line>
-        <Line label="本月流量">{flow(node.month_rx, node.month_tx)}</Line>
-        <Line label="总流量">{flow(node.total_rx, node.total_tx)}</Line>
-        {node.traffic_limit > 0 && (
-          <Line label="流量配额">
-            {usage(monthUsage(node), node.traffic_limit)} · {MODES[node.traffic_mode] ?? node.traffic_mode}
-            {node.traffic_reset_day > 0 && ` · 每月 ${node.traffic_reset_day} 日重置`}
-          </Line>
-        )}
-        <Line label="续费">
-          {node.price > 0 ? `${money(node.price, node.currency)} / ${CYCLES[node.billing_cycle] ?? node.billing_cycle}` : "免费"}
-          {" · "}
-          {node.expires_at ? `${node.expires_at} 到期` : "长期有效"}
-        </Line>
-        {node.agent_version && <Line label="agent">{node.agent_version}</Line>}
-      </div>
-      {/* The last day only, fetched when the row opens: the range and the
-          resource charts are one click away on the chart page. */}
-      <div className="mt-3">
-        <Suspense fallback={<Skeleton className="h-[280px] @max-3xl:h-[220px]" />}>
-          <Latency id={node.id} hours={24} className="h-[280px] @max-3xl:h-[220px]" />
-        </Suspense>
-      </div>
-      <Link href={`/node/${node.id}`} className="mt-1.5 inline-block text-primary hover:underline">
-        查看监控图表 →
-      </Link>
-    </>
+    <div className="my-1 space-y-5 rounded-lg border bg-background/70 p-4 @max-3xl:space-y-4 @max-3xl:p-3">
+      {deployed(node) ? (
+        // Four across, one topic a row: the machine, what it holds, what it has
+        // moved, and what it costs. Two across on a phone.
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 @3xl:grid-cols-4">
+          <Stat
+            label="系统"
+            value={
+              <span className="inline-flex items-center gap-1.5">
+                <OsIcon os={node.os} />
+                {osName(node.os) || "—"}
+              </span>
+            }
+            note={node.kernel}
+          />
+          <Stat
+            label="架构"
+            value={[node.arch, node.virt !== "none" && node.virt].filter(Boolean).join(" · ") || "—"}
+            note={node.agent_version && `agent ${node.agent_version}`}
+          />
+          <Stat
+            label="CPU"
+            value={node.cpu_name ? `${cpuName(node.cpu_name)} × ${node.cpu_cores}` : `${node.cpu_cores} 核`}
+            note={m && `${m.cpu.toFixed(1)}% · 负载 ${m.load.map((n) => n.toFixed(2)).join(" ")}`}
+          />
+          <Stat
+            label={node.online ? "在线" : "离线"}
+            value={node.online ? (m ? uptime(m.uptime) : "等待上报") : away >= 60 ? uptime(away) : "刚刚"}
+            note={!node.online && node.last_seen ? `最后上报 ${new Date(node.last_seen * 1000).toLocaleString("zh-CN")}` : undefined}
+          />
+
+          <Stat label="内存" value={m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total)} note={m && share(m.mem_used, m.mem_total)} />
+          <Stat
+            label="交换"
+            value={node.swap_total > 0 ? (m ? pair(m.swap_used, m.swap_total) : bytes(node.swap_total)) : "未启用"}
+            note={m && node.swap_total > 0 ? share(m.swap_used, m.swap_total) : undefined}
+          />
+          <Stat label="硬盘" value={m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total)} note={m && share(m.disk_used, m.disk_total)} />
+          <Stat label="进程" value={m ? m.procs : "—"} note={m && `TCP ${m.tcp} · UDP ${m.udp}`} />
+
+          <Stat label="实时网速" value={m ? `↓ ${rate(m.net_rx)}  ↑ ${rate(m.net_tx)}` : "—"} />
+          <Stat label="今日流量" value={flow(node.day_rx, node.day_tx)} />
+          <Stat
+            label="本月流量"
+            value={flow(node.month_rx, node.month_tx)}
+            note={
+              node.traffic_limit > 0
+                ? `配额 ${pair(monthUsage(node), node.traffic_limit)} · ${share(monthUsage(node), node.traffic_limit)} · ${MODES[node.traffic_mode] ?? node.traffic_mode}`
+                : undefined
+            }
+          />
+          <Stat label="总流量" value={flow(node.total_rx, node.total_tx)} />
+
+          <Stat
+            label="续费"
+            value={node.price > 0 ? money(node.price, node.currency) : "免费"}
+            note={node.price > 0 ? (CYCLES[node.billing_cycle] ?? node.billing_cycle) : undefined}
+          />
+          <Stat
+            label="到期"
+            value={node.expires_at ?? "长期有效"}
+            note={days === null ? undefined : days < 0 ? `已过期 ${-days} 天` : `剩余 ${days} 天`}
+          />
+          {node.traffic_limit > 0 && node.traffic_reset_day > 0 && (
+            <Stat label="流量重置" value={`每月 ${node.traffic_reset_day} 日`} />
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">尚未接入。在后台生成安装命令并执行一次。</p>
+      )}
+
+      {deployed(node) && (
+        <div className="space-y-2 border-t pt-4">
+          <div className="flex items-baseline justify-between gap-3 text-xs">
+            <span className="text-muted-foreground">网络延迟 · 最近 24 小时</span>
+            <Link href={`/node/${node.id}`} className="text-primary hover:underline">查看资源图表 →</Link>
+          </div>
+          {/* Fetched when the row opens, from the chart page's chunk, which App
+              warms at start, so the table itself carries no recharts. */}
+          <Suspense fallback={<Skeleton className="h-[280px] @max-3xl:h-[220px]" />}>
+            <Latency id={node.id} className="h-[280px] @max-3xl:h-[220px]" />
+          </Suspense>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -189,7 +258,12 @@ function Row({ node, index }: { node: Node; index: number }) {
         <TableCell className={COL.status}><Dot node={node} className="mx-auto block @max-3xl:size-2.5" /></TableCell>
         <TableCell className={COL.name} title={node.name}>{node.name}</TableCell>
         <TableCell className={COL.location}><Flag code={node.country} /></TableCell>
-        <TableCell className={COL.os}>{distro(node.os) || "—"}</TableCell>
+        <TableCell className={COL.os}>
+          <span className="inline-flex items-center justify-center gap-1.5">
+            <OsIcon os={node.os} />
+            {distro(node.os) || "—"}
+          </span>
+        </TableCell>
         <TableCell className={COL.uptime}>{m ? duration(m.uptime) : "—"}</TableCell>
         <TableCell className={COL.expiry}><Expiry node={node} /></TableCell>
         <TableCell className={COL.load}>{m ? m.load[0].toFixed(2) : "—"}</TableCell>
@@ -201,7 +275,7 @@ function Row({ node, index }: { node: Node; index: number }) {
       </TableRow>
       {open && (
         <TableRow className={cn("border-0 hover:bg-transparent", shade)}>
-          <TableCell colSpan={12} className="border-t-0! px-4 pt-1 pb-3 text-left text-[13px] leading-5 whitespace-normal @max-3xl:px-2 @max-3xl:text-[11px]">
+          <TableCell colSpan={12} className="border-t-0! px-3 pt-0 pb-3 text-left whitespace-normal @max-3xl:px-1.5">
             <Details node={node} />
           </TableCell>
         </TableRow>
@@ -230,7 +304,7 @@ export function ServerTable({ nodes }: { nodes: Node[] }) {
       </div>
       <Table className="text-center text-sm @max-3xl:table-fixed @max-3xl:text-[10px]">
         <TableHeader>
-          <TableRow className="border-0 hover:bg-transparent">
+          <TableRow className="border-0 bg-secondary/60 hover:bg-secondary/60">
             {heads.map(([col, label], i) => (
               <TableHead key={i} className={cn("h-8 border-t px-1.5 text-center font-semibold @max-3xl:px-0.5", COL[col])}>
                 {label}

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react"
-import { median } from "d3-array"
 import {
   Area, AreaChart, Brush, CartesianGrid, ComposedChart, Line, LineChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
@@ -50,10 +49,9 @@ const RANGES = [
   { hours: 168, label: "7 天" },
 ]
 
-// Latency stops at a day. A week-wide bucket would still carry the spread and the
-// loss figure, but a week of probe history is outside this page's purpose, and
-// these are the windows in which every ping remains on the chart.
-const RANGES_FOR = { resources: RANGES, latency: RANGES.filter((r) => r.hours <= 24) }
+// The expanded row's latency window: a day, the widest in which every ping
+// remains on the chart.
+const LATENCY_HOURS = 24
 
 const AXIS = { stroke: "currentColor", fontSize: 11, tickLine: false, axisLine: false }
 
@@ -82,11 +80,6 @@ const TIP = {
   borderRadius: "var(--radius)",
 }
 
-const TABS = [
-  { key: "resources", label: "资源" },
-  { key: "latency", label: "网络延迟" },
-] as const
-
 function Panel({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
@@ -109,34 +102,6 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
   )
 }
 
-/**
- * Hampel filter (Hampel 1974; MATLAB ships it as `hampel`). A point more than
- * `sigmas` robust deviations from its window's median is replaced by that median,
- * while everything else passes through unchanged, which is what distinguishes it
- * from a rolling median or a moving average.
- *
- * 1.4826 rescales the median absolute deviation to a standard deviation for
- * normally distributed data; 3 sigma is the conventional cut.
- */
-function despike(points: PingPoint[], window = 7, sigmas = 3): PingPoint[] {
-  const half = window >> 1
-  // ponytail: recomputes the window per point. A few thousand samples is
-  // negligible; substitute a rolling structure if a chart ever needs 100k.
-  return points.map((p, i) => {
-    // A timeout is a gap rather than a high reading: neither smoothed, nor counted
-    // towards what its neighbours are compared against.
-    if (p.latency === null) return p
-    const near = points
-      .slice(Math.max(0, i - half), i + half + 1)
-      .map((x) => x.latency)
-      .filter((v) => v !== null)
-    const mid = median(near) ?? p.latency
-    const mad = median(near.map((v) => Math.abs(v - mid))) ?? 0
-    const outlier = mad > 0 && Math.abs(p.latency - mid) > sigmas * 1.4826 * mad
-    return outlier ? { ...p, latency: mid } : p
-  })
-}
-
 function Fact({ label, value }: { label: string; value?: string | number | null }) {
   if (value === null || value === undefined || value === "") return null
   return (
@@ -150,20 +115,19 @@ function Fact({ label, value }: { label: string; value?: string | number | null 
 type History = { metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss }
 
 /**
- * One window of history, or nothing while `series` is null.
+ * One window of history.
  *
  * A refused request is kept apart from an empty window. The hub builds at most
  * four windows at once, since each holds the connection the agents report
  * through, and answers a fifth with a 503; drawn as an empty chart, that answer
  * would misdirect the reader, so callers show it with a retry.
  */
-function useHistory(id: number, hours: number, series: "metrics" | "ping" | null) {
+function useHistory(id: number, hours: number, series: "metrics" | "ping") {
   const [data, setData] = useState<History | null>(null)
   const [failed, setFailed] = useState("")
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    if (!series) return
     let active = true
     // The charts must not continue drawing the old window while the new one is in
     // flight.
@@ -225,10 +189,8 @@ function timeAxis(rows: { ts: number }[], hours: number, from = 0, to = rows.len
  * expanded row both draw it: the legend above, sized to its chips, and the plot
  * with its brush below at the height `className` gives it.
  */
-export function Latency({ id, hours, smooth = false, className }: {
-  id: number; hours: number; smooth?: boolean; className?: string
-}) {
-  const { data, failed, retry } = useHistory(id, hours, "ping")
+export function Latency({ id, className }: { id: number; className?: string }) {
+  const { data, failed, retry } = useHistory(id, LATENCY_HOURS, "ping")
   // Probes switched off. Hiding a slow one is what makes the fast ones readable,
   // as the axis rescales to what remains.
   const [hiddenProbes, setHiddenProbes] = useState<number[]>([])
@@ -272,26 +234,21 @@ export function Latency({ id, hours, smooth = false, className }: {
   // slower probe leaves gaps in its own column, which is what `connectNulls`
   // addresses.
   //
-  // Every probe and both versions of every sample are held here whether or not
-  // they are on screen: recharts resets the brush when the data array changes
-  // identity, and re-reads a controlled selection only when the index props
-  // change, which they do not. Hiding a probe or enabling despiking therefore
-  // selects a `dataKey` rather than rebuilding the array.
+  // Every probe is held here whether or not it is on screen: recharts resets the
+  // brush when the data array changes identity, and re-reads a controlled
+  // selection only when the index props change, which they do not. Hiding a probe
+  // therefore selects a `dataKey` rather than rebuilding the array.
   const pingRows = useMemo(() => {
     const rows = new Map<
       number,
       { ts: number } & Record<string, number | [number, number] | null>
     >()
     for (const s of pingSeries) {
-      const smoothed = despike(s.points)
-      s.points.forEach((p, i) => {
+      s.points.forEach((p) => {
         const row = rows.get(p.ts) ?? { ts: p.ts * 1_000 }
         row[`t${s.id}`] = p.latency
-        row[`s${s.id}`] = smoothed[i].latency
         row[`l${s.id}`] = p.loss ?? 0
-        // Raw, never despiked: the band exists to show what the line omits, and
-        // smoothing it would omit the same points. A bucket with a single answer
-        // carries no band and spans only that answer. Left null, `connectNulls`
+        // A bucket with a single answer carries no band and spans only that answer. Left null, `connectNulls`
         // would bridge the hours between the few buckets that have one: 9 of
         // 1,438 in a day, the widest gap 268 minutes, drawn as one large wedge.
         row[`b${s.id}`] = p.band ?? (p.latency === null ? null : [p.latency, p.latency])
@@ -347,7 +304,7 @@ export function Latency({ id, hours, smooth = false, className }: {
           <ResponsiveContainer>
             <ComposedChart data={pingRows}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-              <XAxis {...timeAxis(pingRows, hours, from, to)} />
+              <XAxis {...timeAxis(pingRows, LATENCY_HOURS, from, to)} />
               {/* Not anchored at zero: these lines live in a narrow band far from
                   it, and zero flattens every wobble. */}
               <YAxis unit="ms" width={52} domain={["auto", "auto"]} {...AXIS} />
@@ -355,7 +312,7 @@ export function Latency({ id, hours, smooth = false, className }: {
                 labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                 // The line is drawn from what answered, so without this a bucket
                 // that lost most of its packets reads as normal. `dataKey` is
-                // `t7`/`s7`; the loss sits at `l7`.
+                // `t7`; the loss sits at `l7`.
                 formatter={(v, name, item) => {
                   const loss = Number(item?.payload?.[`l${String(item.dataKey).slice(1)}`] ?? 0)
                   return [`${Number(v)} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
@@ -387,7 +344,7 @@ export function Latency({ id, hours, smooth = false, className }: {
               {shownProbes.map((s) => (
                 <Line
                   key={s.id}
-                  dataKey={`${smooth ? "s" : "t"}${s.id}`}
+                  dataKey={`t${s.id}`}
                   name={s.name}
                   stroke={color(s.id)}
                   {...SERIES}
@@ -399,7 +356,7 @@ export function Latency({ id, hours, smooth = false, className }: {
                 dataKey="ts"
                 height={22}
                 travellerWidth={8}
-                tickFormatter={clockFor(hours)}
+                tickFormatter={clockFor(LATENCY_HOURS)}
                 // A prop rather than a class: recharts writes fill="#fff" onto the
                 // rect itself, which a class cannot override.
                 fill="var(--color-muted)"
@@ -415,14 +372,8 @@ export function Latency({ id, hours, smooth = false, className }: {
 }
 
 export function NodeDetail({ node }: { node: Node }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("resources")
-  // Each tab keeps its own range: a 7-day trend and a 1-hour trace answer
-  // different questions.
-  const [ranges, setRanges] = useState({ resources: 6, latency: 6 })
-  const hours = ranges[tab]
-  const [smooth, setSmooth] = useState(false)
-  // The latency tab fetches for itself, inside `Latency`.
-  const { data, failed, retry } = useHistory(node.id, ranges.resources, tab === "resources" ? "metrics" : null)
+  const [hours, setHours] = useState(6)
+  const { data, failed, retry } = useHistory(node.id, hours, "metrics")
 
   const m = node.metrics
   const away = node.last_seen ? Date.now() / 1000 - node.last_seen : 0
@@ -494,43 +445,15 @@ export function NodeDetail({ node }: { node: Node }) {
         <p className="rounded-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{node.remark}</p>
       )}
 
-      <div className="space-y-2 border-t pt-4">
-        <div className="flex gap-1">
-          {TABS.map((t) => (
-            <Tab key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
-              {t.label}
-            </Tab>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="flex gap-1">
-            {RANGES_FOR[tab].map((r) => (
-              <Tab
-                key={r.hours}
-                active={hours === r.hours}
-                onClick={() => setRanges((all) => ({ ...all, [tab]: r.hours }))}
-              >
-                {r.label}
-              </Tab>
-            ))}
-          </div>
-          {tab === "latency" && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={smooth}
-                onChange={(e) => setSmooth(e.target.checked)}
-                className="accent-primary"
-              />
-              削峰
-            </label>
-          )}
-        </div>
+      <div className="flex gap-1 border-t pt-4">
+        {RANGES.map((r) => (
+          <Tab key={r.hours} active={hours === r.hours} onClick={() => setHours(r.hours)}>
+            {r.label}
+          </Tab>
+        ))}
       </div>
 
-      {tab === "latency" ? (
-        <Latency id={node.id} hours={hours} smooth={smooth} className="h-[420px] max-md:h-[320px]" />
-      ) : !data ? (
+      {!data ? (
         <Skeleton className="h-40 w-full" />
       ) : failed ? (
         <Failed message={failed} retry={retry} />

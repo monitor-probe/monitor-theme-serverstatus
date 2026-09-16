@@ -6,8 +6,8 @@ import type { Node } from "@/lib/api"
 import { Link } from "@/lib/route"
 
 /**
- * The chart page's node list. Switching here keeps the chosen tab and range, so
- * one window can be compared across nodes; the search keeps a fleet of a hundred
+ * The chart page's node list. Switching here keeps the chosen range, so one
+ * window can be compared across nodes; the search keeps a fleet of a hundred
  * within a few keystrokes.
  */
 export function NodePicker({ nodes, selected }: { nodes: Node[]; selected: number }) {
