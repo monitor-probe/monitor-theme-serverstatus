@@ -77,8 +77,12 @@ export function duration(seconds: number): string {
   return `${Math.floor(s / 3600)}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`
 }
 
-/** The month's usage counted the way the node's plan meters it. */
-export function monthUsage(node: { month_rx: number; month_tx: number; traffic_mode: string }): number {
+/**
+ * The month's usage counted the way the node's plan meters it. The hub computes
+ * it; the switch below serves only a hub from before `month_used`.
+ */
+export function monthUsage(node: { month_rx: number; month_tx: number; month_used?: number; traffic_mode: string }): number {
+  if (typeof node.month_used === "number") return node.month_used
   const { month_rx: rx, month_tx: tx } = node
   switch (node.traffic_mode) {
     case "up":
