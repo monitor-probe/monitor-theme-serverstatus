@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { deployed, Dot, Flag } from "@/components/ServerTable"
 import { api, type Node } from "@/lib/api"
 import {
-  axisBytes, axisTop, bytes, clockFor, quarters, rate, timeTicks, uptime,
+  axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, timeTicks, uptime,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -184,6 +184,10 @@ export function Latency({ id, className }: { id: number; className?: string }) {
   // Probes switched off. Hiding a slow one is what makes the fast ones readable,
   // as the axis rescales to what remains.
   const [hiddenProbes, setHiddenProbes] = useState<number[]>([])
+  // Spikes pulled back to their neighbourhood. Off by default, since it is the
+  // raw round trips that answer whether the node stalled at 03:00; on, a single
+  // 2 s bucket stops setting the axis for the day around it.
+  const [smooth, setSmooth] = useState(false)
   // Where the brush has been dragged, so the axis reticks for the visible span.
   // Tagged with the window it was dragged on, so a new window starts unzoomed
   // without an effect to clear it.
@@ -224,24 +228,34 @@ export function Latency({ id, className }: { id: number; className?: string }) {
   // slower probe leaves gaps in its own column, which is what `connectNulls`
   // addresses.
   //
-  // Every probe is held here whether or not it is on screen: recharts resets the
-  // brush when the data array changes identity, and re-reads a controlled
-  // selection only when the index props change, which they do not. Hiding a probe
-  // therefore selects a `dataKey` rather than rebuilding the array.
+  // Every probe, and both versions of every sample, are held here whether or not
+  // they are on screen: recharts resets the brush when the data array changes
+  // identity, and re-reads a controlled selection only when the index props
+  // change, which they do not. Hiding a probe or clipping the spikes therefore
+  // selects a `dataKey` rather than rebuilding the array.
   const pingRows = useMemo(() => {
     const rows = new Map<
       number,
       { ts: number } & Record<string, number | [number, number] | null>
     >()
     for (const s of pingSeries) {
-      s.points.forEach((p) => {
+      const line = despike(s.points.map((p) => p.latency))
+      // The band spans the same outliers as the line, and with one probe on
+      // screen it is what the axis is fitted to, so it is clipped alongside it
+      // rather than left to pull the axis back open.
+      const lo = despike(s.points.map((p) => p.band?.[0] ?? p.latency))
+      const hi = despike(s.points.map((p) => p.band?.[1] ?? p.latency))
+      s.points.forEach((p, i) => {
         const row = rows.get(p.ts) ?? { ts: p.ts * 1_000 }
         row[`t${s.id}`] = p.latency
+        row[`s${s.id}`] = line[i]
         row[`l${s.id}`] = p.loss ?? 0
         // A bucket with a single answer carries no band and spans only that answer. Left null, `connectNulls`
         // would bridge the hours between the few buckets that have one: 9 of
         // 1,438 in a day, the widest gap 268 minutes, drawn as one large wedge.
         row[`b${s.id}`] = p.band ?? (p.latency === null ? null : [p.latency, p.latency])
+        const [low, high] = [lo[i], hi[i]]
+        row[`c${s.id}`] = low === null || high === null ? null : [low, high]
         rows.set(p.ts, row)
       })
     }
@@ -285,6 +299,14 @@ export function Latency({ id, className }: { id: number; className?: string }) {
             </button>
           )
         })}
+        <button
+          onClick={() => setSmooth((on) => !on)}
+          aria-pressed={smooth}
+          title="把孤立的高延迟换成邻近若干桶的中位数，持续的高延迟保持原样"
+          className={`rounded-md border px-2 py-1 text-xs transition-opacity ${smooth ? "" : "opacity-40"}`}
+        >
+          削峰
+        </button>
       </div>
 
       <div className={cn("w-full text-muted-foreground", className)}>
@@ -321,7 +343,7 @@ export function Latency({ id, className }: { id: number; className?: string }) {
                 shownProbes.map((s) => (
                   <Area
                     key={`band${s.id}`}
-                    dataKey={`b${s.id}`}
+                    dataKey={`${smooth ? "c" : "b"}${s.id}`}
                     stroke="none"
                     fill={color(s.id)}
                     fillOpacity={0.16}
@@ -334,7 +356,7 @@ export function Latency({ id, className }: { id: number; className?: string }) {
               {shownProbes.map((s) => (
                 <Line
                   key={s.id}
-                  dataKey={`t${s.id}`}
+                  dataKey={`${smooth ? "s" : "t"}${s.id}`}
                   name={s.name}
                   stroke={color(s.id)}
                   {...SERIES}
