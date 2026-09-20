@@ -4,8 +4,8 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, compact, cpuName, daysUntil, distro, duration, monthUsage, osName, pair, quarters,
-  timeTicks, uptime,
+  axisBytes, axisTop, bytes, compact, cpuName, daysUntil, despike, distro, duration, monthUsage, osName, pair,
+  quarters, timeTicks, uptime,
 } from "./format.ts"
 
 let failed = 0
@@ -126,6 +126,26 @@ eq(duration(76 * 86400 + 5), "76 天", "超过一天只写天数")
   eq(monthUsage({ ...node, traffic_mode: "down" }), 3, "仅下行")
   eq(monthUsage({ ...node, traffic_mode: "max" }), 5, "取较大值")
   eq(monthUsage({ ...node, traffic_mode: "up", month_used: 7 }), 7, "hub 算好的值优先")
+}
+
+// despike：孤立的尖峰被拉回邻域，持续的高延迟保留，超时仍是缺口。
+{
+  const flat = [20, 21, 20, 22, 21, 20, 21]
+  eq(despike(flat), flat, "没有离群点就原样返回")
+  eq(despike([20, 21, 20, 900, 21, 20, 21])[3], 21, "孤立尖峰替换为窗口中位数")
+  // 一段持续的高延迟是真实状况而非尖峰：窗口内多数样本同样高，中位数随之抬高。
+  // 只断言尖峰那一点会漏掉这条——滑动中位数同样能通过前一条断言。
+  eq(despike([20, 21, 300, 310, 305, 300, 21, 20]).slice(2, 6), [300, 310, 305, 300], "持续升高不被削掉")
+  eq(despike([20, null, 900, null, 21]), [20, null, 21, null, 21], "超时保持为缺口，不参与比较")
+  // 延迟以整毫秒存储，稳定线路的窗口内多数样本完全相同，绝对中位差为 0。不设下限
+  // 时这条断言会失败，而它正是削峰要处理的形状：平直的线加一个 2 秒的桶。
+  eq(despike([180, 180, 181, 180, 2000, 180, 180, 181, 180])[4], 180, "平直线路上的尖峰同样被削掉")
+  // 下限不能低到把正常抖动也当成尖峰：整毫秒的数据里 1 ms 的起伏是常态。
+  eq(despike([180, 181, 180, 180, 181, 180, 180]), [180, 181, 180, 180, 181, 180, 180], "1 ms 抖动原样保留")
+  // 两侧都削：孤立的「异常快」同样会把自适应的轴拉开，和尖峰是同一个问题的镜像。
+  eq(despike([200, 200, 20, 200, 200, 200, 200])[2], 200, "异常快的桶同样被拉回邻域")
+  // 窗口按样本数计，桶的时长由调用方按桶间隔折算。
+  eq(despike([20, 900, 20, 20, 20], 3)[1], 20, "窗口可以调小")
 }
 
 eq(osName("Debian GNU/Linux 12 (bookworm)"), "Debian 12", "发行版名去掉代号")

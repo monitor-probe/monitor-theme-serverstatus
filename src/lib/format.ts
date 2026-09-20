@@ -263,3 +263,50 @@ const LADDER: Record<number, number[]> = {
 export function quarters(top: number): number[] {
   return [0, 0.25, 0.5, 0.75, 1].map((f) => top * f)
 }
+
+/**
+ * Hampel filter (Hampel 1974; MATLAB ships it as `hampel`). A sample more than
+ * `sigmas` robust deviations from the median of its window is replaced by that
+ * median, while everything else passes through unchanged, which is what
+ * separates it from a rolling median or a moving average: a period that is
+ * genuinely slow keeps its height, since its own neighbours are slow too.
+ *
+ * Both tails are rejected, not only the slow one. A single bucket that answered
+ * far faster than its neighbours stretches an auto-fitted axis exactly as a slow
+ * one does -- measured on a day of two probes, one such bucket took the axis from
+ * 150-480 ms out to 0-600 ms -- and this filter is what a reader turns on to see
+ * the trend rather than the extremes. The unfiltered view is one click away.
+ *
+ * 1.4826 rescales the median absolute deviation to a standard deviation for
+ * normally distributed data; 3 sigma is the conventional cut.
+ *
+ * The deviation is floored at one millisecond, the resolution round trips are
+ * stored in. Unfloored, a window whose samples mostly repeat one value -- which
+ * is what a steady route looks like at that resolution -- has a deviation of
+ * exactly 0, and the test then either rejects nothing or rejects every sample
+ * that is not the median, depending on which way the comparison is written. Both
+ * fail on the very chart this exists for: a flat line with one 2 s bucket in it.
+ * The floor puts the cut at 4.5 ms for a line that does not move.
+ *
+ * A null is a timeout rather than a high reading, so it is neither replaced nor
+ * counted towards what its neighbours are compared against.
+ */
+export function despike(values: (number | null)[], window = 7, sigmas = 3): (number | null)[] {
+  const half = window >> 1
+  // ponytail: the window is re-collected per sample. A day of one probe is 1,438
+  // of them; a rolling structure would only pay off on a far longer window.
+  return values.map((v, i) => {
+    if (v === null) return v
+    const near = values.slice(Math.max(0, i - half), i + half + 1).filter((n) => n !== null)
+    const mid = median(near)
+    const mad = Math.max(median(near.map((n) => Math.abs(n - mid))), 1)
+    return Math.abs(v - mid) > sigmas * 1.4826 * mad ? mid : v
+  })
+}
+
+/** The middle of a sorted copy, the mean of the middle pair for an even count. */
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  const half = sorted.length >> 1
+  return sorted.length % 2 ? sorted[half] : (sorted[half - 1] + sorted[half]) / 2
+}
