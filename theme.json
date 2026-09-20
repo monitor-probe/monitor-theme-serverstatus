@@ -2,7 +2,7 @@
   "name": "ServerStatus",
   "short": "serverstatus",
   "description": "经典 ServerStatus 紧凑表格，支持暗色",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "stqfdyr",
   "url": "https://github.com/monitor-probe/monitor-theme-serverstatus"
 }
