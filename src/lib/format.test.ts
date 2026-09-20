@@ -125,6 +125,7 @@ eq(duration(76 * 86400 + 5), "76 天", "超过一天只写天数")
   eq(monthUsage({ ...node, traffic_mode: "up" }), 5, "仅上行")
   eq(monthUsage({ ...node, traffic_mode: "down" }), 3, "仅下行")
   eq(monthUsage({ ...node, traffic_mode: "max" }), 5, "取较大值")
+  eq(monthUsage({ ...node, traffic_mode: "up", month_used: 7 }), 7, "hub 算好的值优先")
 }
 
 eq(osName("Debian GNU/Linux 12 (bookworm)"), "Debian 12", "发行版名去掉代号")
