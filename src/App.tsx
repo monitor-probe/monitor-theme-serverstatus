@@ -15,16 +15,37 @@ type Me = { authed: boolean; github: boolean; site_name: string; public_page: bo
 const loadDetail = () => import("@/components/NodeDetail").then((m) => ({ default: m.NodeDetail }))
 const NodeDetail = lazy(loadDetail)
 
+const DARK_MEDIA = matchMedia("(prefers-color-scheme: dark)")
+
+/**
+ * The visitor's own choice, or the system's while there is none. Only the toggle
+ * writes the choice down: persisting the system's answer on first load would pin
+ * it, leaving a visitor who never touched the toggle in whichever mode their
+ * system happened to be in that day.
+ */
 function useTheme() {
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem("theme")
-    return saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches
-  })
+  const [saved, setSaved] = useState(() => localStorage.getItem("theme"))
+  const [system, setSystem] = useState(() => DARK_MEDIA.matches)
+  const dark = saved ? saved === "dark" : system
+
+  useEffect(() => {
+    const sync = () => setSystem(DARK_MEDIA.matches)
+    DARK_MEDIA.addEventListener("change", sync)
+    return () => DARK_MEDIA.removeEventListener("change", sync)
+  }, [])
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark)
-    localStorage.setItem("theme", dark ? "dark" : "light")
   }, [dark])
-  return [dark, () => setDark((d) => !d)] as const
+
+  return [
+    dark,
+    () => {
+      const next = dark ? "light" : "dark"
+      localStorage.setItem("theme", next)
+      setSaved(next)
+    },
+  ] as const
 }
 
 /** Kept in the corner rather than the header, as the classic layout does. */

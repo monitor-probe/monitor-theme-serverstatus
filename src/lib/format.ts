@@ -92,8 +92,6 @@ export function monthUsage(node: { month_rx: number; month_tx: number; traffic_m
   }
 }
 
-export const MODES: Record<string, string> = { up: "仅上行", down: "仅下行", max: "取较大值", sum: "上下行相加" }
-
 export function percent(used: number, total: number): number {
   return total > 0 ? Math.min(100, (used / total) * 100) : 0
 }
@@ -155,7 +153,7 @@ const MDHHMM = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
 })
 
-export function clock(ms: number): string {
+function clock(ms: number): string {
   return HHMM.format(ms)
 }
 
