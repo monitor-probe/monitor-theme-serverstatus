@@ -63,7 +63,7 @@ export type Node = {
   remark?: string
 }
 
-export class ApiError extends Error {
+class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
     super(message)
