@@ -256,13 +256,13 @@ export function Latency({ id, className }: { id: number; className?: string }) {
       { ts: number } & Record<string, number | [number, number] | null>
     >()
     for (const s of pingSeries) {
-      const window = despikeWindow(s.points)
-      const line = despike(s.points.map((p) => p.latency), window)
+      const windowSize = despikeWindow(s.points)
+      const line = despike(s.points.map((p) => p.latency), windowSize)
       // The band spans the same outliers as the line, and with one probe on
       // screen it is what the axis is fitted to, so it is clipped alongside it
       // rather than left to pull the axis back open.
-      const lo = despike(s.points.map((p) => p.band?.[0] ?? p.latency), window)
-      const hi = despike(s.points.map((p) => p.band?.[1] ?? p.latency), window)
+      const lo = despike(s.points.map((p) => p.band?.[0] ?? p.latency), windowSize)
+      const hi = despike(s.points.map((p) => p.band?.[1] ?? p.latency), windowSize)
       s.points.forEach((p, i) => {
         const row = rows.get(p.ts) ?? { ts: p.ts * 1_000 }
         row[`t${s.id}`] = p.latency
@@ -272,8 +272,16 @@ export function Latency({ id, className }: { id: number; className?: string }) {
         // would bridge the hours between the few buckets that have one: 9 of
         // 1,438 in a day, the widest gap 268 minutes, drawn as one large wedge.
         row[`b${s.id}`] = p.band ?? (p.latency === null ? null : [p.latency, p.latency])
+        // Taken as the span of three filtered series rather than a pair: the two
+        // edges are filtered independently, so a bucket that answered slightly
+        // faster than usual can trip the low edge alone and come back above the
+        // high one -- [180, 178] against a line of 176, drawn backwards with the
+        // line outside it.
         const [low, high] = [lo[i], hi[i]]
-        row[`c${s.id}`] = low === null || high === null ? null : [low, high]
+        row[`c${s.id}`] =
+          low === null || high === null
+            ? null
+            : [Math.min(low, high, line[i] ?? low), Math.max(low, high, line[i] ?? high)]
         rows.set(p.ts, row)
       })
     }

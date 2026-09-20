@@ -105,11 +105,13 @@ function Bar({ pct, label }: { pct: number | null; label?: string }) {
   )
 }
 
-// The widest form each formatter writes, in `ch`: `compact` spans "0B" to
-// "1023M", that is 2.2 to 5.49; `bytes` reaches 7.09 at "1023 GB"; `rate` 9.79 at
-// "1023.0 KB/s". Rounded up, since other UI fonts are a few percent wider than
-// the one these were measured in.
-const SLOT = { compact: 5.6, bytes: 7.2, rate: 9.9 }
+// The widest form each formatter writes, in `ch`, measured with tabular figures.
+// M is the widest unit letter, so each is measured in megabytes rather than the
+// gigabytes a reading is more often in: `compact` spans "0B" to "1023M", that is
+// 2.2 to 5.49; `bytes` reaches 7.19 at "1023 MB"; `rate` 10.09 at "1023.0 MB/s".
+// Rounded up, since other UI fonts are a few percent wider than the one these
+// were measured in.
+const SLOT = { compact: 5.6, bytes: 7.3, rate: 10.2 }
 
 /**
  * A figure that changes on every push, held in a slot wide enough for the widest
