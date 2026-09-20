@@ -157,6 +157,23 @@ function Failed({ message, retry }: { message: string; retry: () => void }) {
   )
 }
 
+/**
+ * How many samples of a probe's own series make up seven minutes of neighbours.
+ *
+ * The window the filter judges against has to be a duration, not a count: the
+ * hub buckets a window to the `points` asked for above, so the same day arrives
+ * as one-minute buckets on a desktop and two-minute ones on a phone, and a fixed
+ * count would clip a five-minute stall on the first while keeping it on the
+ * second. The smallest gap is the bucket interval; a longer one is the node
+ * being offline. Odd, so the window has a middle, and bounded so a sparse probe
+ * still has neighbours and a dense one does not pay for a wide sort.
+ */
+function despikeWindow(points: { ts: number }[]): number {
+  let step = Infinity
+  for (let i = 1; i < points.length; i++) step = Math.min(step, points[i].ts - points[i - 1].ts)
+  return Math.min(15, Math.max(3, Math.round(420 / step) | 1))
+}
+
 // A real time axis rather than the category axis recharts defaults to: on a
 // category axis ticks are selected by index, so a period the agent was offline for
 // collapses to nothing.
@@ -239,12 +256,13 @@ export function Latency({ id, className }: { id: number; className?: string }) {
       { ts: number } & Record<string, number | [number, number] | null>
     >()
     for (const s of pingSeries) {
-      const line = despike(s.points.map((p) => p.latency))
+      const window = despikeWindow(s.points)
+      const line = despike(s.points.map((p) => p.latency), window)
       // The band spans the same outliers as the line, and with one probe on
       // screen it is what the axis is fitted to, so it is clipped alongside it
       // rather than left to pull the axis back open.
-      const lo = despike(s.points.map((p) => p.band?.[0] ?? p.latency))
-      const hi = despike(s.points.map((p) => p.band?.[1] ?? p.latency))
+      const lo = despike(s.points.map((p) => p.band?.[0] ?? p.latency), window)
+      const hi = despike(s.points.map((p) => p.band?.[1] ?? p.latency), window)
       s.points.forEach((p, i) => {
         const row = rows.get(p.ts) ?? { ts: p.ts * 1_000 }
         row[`t${s.id}`] = p.latency
@@ -302,7 +320,7 @@ export function Latency({ id, className }: { id: number; className?: string }) {
         <button
           onClick={() => setSmooth((on) => !on)}
           aria-pressed={smooth}
-          title="把孤立的高延迟换成邻近若干桶的中位数，持续的高延迟保持原样"
+          title="把孤立的异常值换成邻近若干桶的中位数，持续的变化保持原样"
           className={`rounded-md border px-2 py-1 text-xs transition-opacity ${smooth ? "" : "opacity-40"}`}
         >
           削峰

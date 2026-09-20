@@ -119,11 +119,16 @@ const SLOT = { compact: 5.6, bytes: 7.2, rate: 9.9 }
  *
  * `ch` is the width of a digit under the tabular figures this selects, so a slot
  * follows whatever size it is drawn at, down to the 10px the table uses on a
- * phone.
+ * phone. The width travels as a custom property rather than `min-width` itself,
+ * which is what allows a caller to drop the reservation where the column is too
+ * narrow to hold it: an inline style would outrank the class that does so.
  */
-function Num({ ch, children }: { ch: number; children: ReactNode }) {
+function Num({ ch, className, children }: { ch: number; className?: string; children: ReactNode }) {
   return (
-    <span className="tnum inline-block text-right" style={{ minWidth: `${ch}ch` }}>
+    <span
+      className={cn("tnum inline-block min-w-(--slot) text-right", className)}
+      style={{ "--slot": `${ch}ch` } as CSSProperties}
+    >
       {children}
     </span>
   )
@@ -281,10 +286,14 @@ function Row({ node, index }: { node: Node; index: number }) {
         <TableCell className={COL.uptime}>{m ? duration(m.uptime) : "—"}</TableCell>
         <TableCell className={COL.expiry}><Expiry node={node} /></TableCell>
         <TableCell className={COL.load}>{m ? m.load[0].toFixed(2) : "—"}</TableCell>
+        {/* No reservation on a phone: the column is 21% of the panel, 60px at
+            320px, against the 70px two slots and their separator need, and the
+            overflow disappears under the bar beside it. */}
         <TableCell className={COL.speed}>
           {m ? (
             <>
-              <Num ch={SLOT.compact}>{compact(m.net_rx)}</Num> | <Num ch={SLOT.compact}>{compact(m.net_tx)}</Num>
+              <Num ch={SLOT.compact} className="@max-3xl:min-w-0">{compact(m.net_rx)}</Num> |{" "}
+              <Num ch={SLOT.compact} className="@max-3xl:min-w-0">{compact(m.net_tx)}</Num>
             </>
           ) : (
             "— | —"

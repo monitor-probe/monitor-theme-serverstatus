@@ -267,6 +267,12 @@ export function quarters(top: number): number[] {
  * separates it from a rolling median or a moving average: a period that is
  * genuinely slow keeps its height, since its own neighbours are slow too.
  *
+ * Both tails are rejected, not only the slow one. A single bucket that answered
+ * far faster than its neighbours stretches an auto-fitted axis exactly as a slow
+ * one does -- measured on a day of two probes, one such bucket took the axis from
+ * 150-480 ms out to 0-600 ms -- and this filter is what a reader turns on to see
+ * the trend rather than the extremes. The unfiltered view is one click away.
+ *
  * 1.4826 rescales the median absolute deviation to a standard deviation for
  * normally distributed data; 3 sigma is the conventional cut.
  *
