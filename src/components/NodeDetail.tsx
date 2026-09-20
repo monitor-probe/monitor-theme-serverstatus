@@ -325,9 +325,13 @@ export function Latency({ id, className }: { id: number; className?: string }) {
                 // The line is drawn from what answered, so without this a bucket
                 // that lost most of its packets reads as normal. `dataKey` is
                 // `t7`; the loss sits at `l7`.
+                //
+                // Rounded because a clipped sample carries the median of an even
+                // window, which falls between two of the whole milliseconds the
+                // hub stores.
                 formatter={(v, name, item) => {
                   const loss = Number(item?.payload?.[`l${String(item.dataKey).slice(1)}`] ?? 0)
-                  return [`${Number(v)} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
+                  return [`${Math.round(Number(v))} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
                 }}
                 contentStyle={TIP}
               />
