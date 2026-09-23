@@ -13,7 +13,7 @@ import { Link } from "@/lib/route"
 export function NodePicker({ nodes, selected }: { nodes: Node[]; selected: number }) {
   const [query, setQuery] = useState("")
   const q = query.trim().toLowerCase()
-  const shown = q ? nodes.filter((n) => `${n.name} ${n.country} ${n.os}`.toLowerCase().includes(q)) : nodes
+  const shown = q ? nodes.filter((n) => `${n.name} ${n.group ?? ""} ${n.country} ${n.os}`.toLowerCase().includes(q)) : nodes
 
   return (
     <aside className="flex min-h-0 flex-col max-md:max-h-52 max-md:border-b max-md:pb-2 md:sticky md:top-16 md:max-h-[calc(100svh-6rem)] md:self-start md:border-r md:pr-4">
