@@ -29,6 +29,8 @@ export type Node = {
   online: boolean
   /** ISO 3166-1 alpha-2, or empty when the hub could not locate the address. */
   country: string
+  /** Set by the operator; empty is ungrouped. Absent from a hub predating groups. */
+  group?: string
   last_seen: number
   metrics: Metrics | null
   os: string
@@ -66,6 +68,11 @@ export type Node = {
   hostname?: string
   ip?: string
   remark?: string
+}
+
+/** Every group in use, in the order of the first node carrying it: the operator's node order decides the tab order. */
+export function groupsOf(nodes: Pick<Node, "group">[]): string[] {
+  return [...new Set(nodes.map((n) => n.group ?? "").filter(Boolean))]
 }
 
 class ApiError extends Error {

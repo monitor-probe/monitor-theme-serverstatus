@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type CSSProperties, type ReactNode } from "react"
+import { lazy, Suspense, useEffect, useState, type CSSProperties, type ReactNode } from "react"
 import {
   siAlmalinux, siAlpinelinux, siArchlinux, siCentos, siDebian, siFedora, siLinux, siOpensuse, siRedhat,
   siRockylinux, siUbuntu, type SimpleIcon,
@@ -6,7 +6,7 @@ import {
 
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { Node } from "@/lib/api"
+import { groupsOf, type Node } from "@/lib/api"
 import {
   bytes, compact, CYCLES, distro, duration, expiresIn, FOREVER, money, monthUsage, osName, cpuName, pair,
   percent, rate, uptime,
@@ -325,7 +325,33 @@ function Row({ node, index }: { node: Node; index: number }) {
   )
 }
 
-export function ServerTable({ nodes }: { nodes: Node[] }) {
+/**
+ * Group tabs appear only once the operator has grouped something, so a hub
+ * without groups keeps the table it always had. The summary follows the tab.
+ * The choice is held by App, so it survives a visit to a node's charts.
+ */
+export function ServerTable({ nodes: all, group, onGroup }: {
+  nodes: Node[]
+  /** null is every node, "" the ungrouped. */
+  group: string | null
+  onGroup: (group: string | null) => void
+}) {
+  const groups = groupsOf(all)
+  const ungrouped = all.filter((n) => !n.group).length
+  // A tab that has since emptied or been renamed -- 未分组 included -- falls back
+  // to every node rather than to an empty table, and is forgotten, so a later
+  // group of the same name does not take the page over.
+  const current = group === null || (group === "" ? ungrouped > 0 : groups.includes(group)) ? group : null
+  useEffect(() => {
+    if (current !== group) onGroup(current)
+  }, [current, group, onGroup])
+  const nodes = current === null ? all : all.filter((n) => (n.group ?? "") === current)
+  const tabs = [
+    [null, "全部", all.length] as const,
+    ...groups.map((g) => [g, g, all.filter((n) => n.group === g).length] as const),
+    ...(ungrouped ? [["", "未分组", ungrouped] as const] : []),
+  ]
+
   const online = nodes.filter((n) => n.online && n.metrics)
   const sum = (pick: (n: Node) => number) => online.reduce((total, n) => total + pick(n), 0)
   const totalRx = nodes.reduce((total, n) => total + n.total_rx, 0)
@@ -348,11 +374,30 @@ export function ServerTable({ nodes }: { nodes: Node[] }) {
             <Num ch={SLOT.compact}>{compact(sum((n) => n.metrics!.net_rx))}</Num>/s · ↑{" "}
             <Num ch={SLOT.compact}>{compact(sum((n) => n.metrics!.net_tx))}</Num>/s
           </span>
-          <span className="whitespace-nowrap" title="所有节点累计下载与上传流量">
+          <span className="whitespace-nowrap" title="所列节点累计下载与上传流量">
             总流量 ↓ <Num ch={SLOT.bytes}>{bytes(totalRx)}</Num> · ↑ <Num ch={SLOT.bytes}>{bytes(totalTx)}</Num>
           </span>
         </div>
       </div>
+      {/* Bootstrap's pills. Wrapped where there is room, since dozens of groups
+          are possible and a mouse has no easy way to scroll a row sideways; on
+          a phone the row scrolls instead of pushing the table off the screen. */}
+      {groups.length > 0 && (
+        <div role="group" aria-label="分组" className="flex flex-wrap gap-1 px-1 pb-3 max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-2">
+          {tabs.map(([value, label, count]) => (
+            <button
+              // Group names are free text, so they carry a prefix no key of
+              // the 全部 tab can share.
+              key={value === null ? "*" : `=${value}`}
+              aria-pressed={current === value}
+              onClick={() => onGroup(value)}
+              className="shrink-0 rounded px-3 py-1 text-sm whitespace-nowrap text-primary transition-colors hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground max-md:px-2 max-md:text-xs"
+            >
+              {label} <span className="tnum opacity-60">{count}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <Table className="text-center text-sm @max-3xl:table-fixed @max-3xl:text-[10px]">
         <TableHeader>
           <TableRow className="border-0 hover:bg-transparent">
