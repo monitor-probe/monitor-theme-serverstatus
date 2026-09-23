@@ -105,37 +105,6 @@ function Bar({ pct, label }: { pct: number | null; label?: string }) {
   )
 }
 
-// The widest form each formatter writes, in `ch`, measured with tabular figures.
-// M is the widest unit letter, so each is measured in megabytes rather than the
-// gigabytes a reading is more often in: `compact` spans "0B" to "1023M", that is
-// 2.2 to 5.49; `bytes` reaches 7.19 at "1023 MB"; `rate` 10.09 at "1023.0 MB/s".
-// Rounded up, since other UI fonts are a few percent wider than the one these
-// were measured in.
-const SLOT = { compact: 5.6, bytes: 7.3, rate: 10.2 }
-
-/**
- * A figure that changes on every push, held in a slot wide enough for the widest
- * form it can take, so a node moving from 19K/s to 8.19K/s leaves the rest of the
- * line where it was. Right-aligned, so the unit keeps its place and the digits
- * grow towards the arrow instead.
- *
- * `ch` is the width of a digit under the tabular figures this selects, so a slot
- * follows whatever size it is drawn at, down to the 10px the table uses on a
- * phone. The width travels as a custom property rather than `min-width` itself,
- * which is what allows a caller to drop the reservation where the column is too
- * narrow to hold it: an inline style would outrank the class that does so.
- */
-function Num({ ch, className, children }: { ch: number; className?: string; children: ReactNode }) {
-  return (
-    <span
-      className={cn("tnum inline-block min-w-(--slot) text-right", className)}
-      style={{ "--slot": `${ch}ch` } as CSSProperties}
-    >
-      {children}
-    </span>
-  )
-}
-
 function Expiry({ node }: { node: Node }) {
   const days = expiresIn(node)
   if (days === null) return <span className="text-muted-foreground" title="永不到期">{FOREVER}</span>
@@ -212,15 +181,7 @@ function Details({ node }: { node: Node }) {
 
         <Line label="负载">{m ? m.load.map((n) => n.toFixed(2)).join(" / ") : "—"}</Line>
         <Line label="进程 / 连接">{m ? `${m.procs} · TCP ${m.tcp} · UDP ${m.udp}` : "—"}</Line>
-        <Line label="网速">
-          {m ? (
-            <>
-              ↓ <Num ch={SLOT.rate}>{rate(m.net_rx)}</Num> · ↑ <Num ch={SLOT.rate}>{rate(m.net_tx)}</Num>
-            </>
-          ) : (
-            "—"
-          )}
-        </Line>
+        <Line label="网速">{m ? `↓ ${rate(m.net_rx)} · ↑ ${rate(m.net_tx)}` : "—"}</Line>
 
         <Line label="今日流量">{flow(node.day_rx, node.day_tx)}</Line>
         <Line label="本月流量">{flow(node.month_rx, node.month_tx)}</Line>
@@ -288,19 +249,7 @@ function Row({ node, index }: { node: Node; index: number }) {
         <TableCell className={COL.uptime}>{m ? duration(m.uptime) : "—"}</TableCell>
         <TableCell className={COL.expiry}><Expiry node={node} /></TableCell>
         <TableCell className={COL.load}>{m ? m.load[0].toFixed(2) : "—"}</TableCell>
-        {/* No reservation on a phone: the column is 21% of the panel, 60px at
-            320px, against the 70px two slots and their separator need, and the
-            overflow disappears under the bar beside it. */}
-        <TableCell className={COL.speed}>
-          {m ? (
-            <>
-              <Num ch={SLOT.compact} className="@max-3xl:min-w-0">{compact(m.net_rx)}</Num> |{" "}
-              <Num ch={SLOT.compact} className="@max-3xl:min-w-0">{compact(m.net_tx)}</Num>
-            </>
-          ) : (
-            "— | —"
-          )}
-        </TableCell>
+        <TableCell className={COL.speed}>{m ? `${compact(m.net_rx)} | ${compact(m.net_tx)}` : "— | —"}</TableCell>
         <TableCell className={COL.bar}><Bar pct={m ? m.cpu : null} /></TableCell>
         <TableCell className={COL.bar}><Bar pct={m ? percent(m.mem_used, m.mem_total) : null} /></TableCell>
         <TableCell className={COL.bar}><Bar pct={m ? percent(m.disk_used, m.disk_total) : null} /></TableCell>
@@ -361,15 +310,10 @@ function ServerTable({ title, nodes }: { title: string; nodes: Node[] }) {
         <h2 className="min-w-0 truncate text-lg font-semibold max-md:text-sm" title={title}>{title}</h2>
         <div className="tnum flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground max-md:text-[10px]">
           <span className="whitespace-nowrap">
-            {/* The online count is reserved for as many digits as the total has,
-                since it cannot exceed it. */}
-            在线 <Num ch={String(nodes.length).length}>{nodes.filter((n) => n.online).length}</Num> / {nodes.length} · ↓{" "}
-            <Num ch={SLOT.compact}>{compact(sum((n) => n.metrics!.net_rx))}</Num>/s · ↑{" "}
-            <Num ch={SLOT.compact}>{compact(sum((n) => n.metrics!.net_tx))}</Num>/s
+            在线 {nodes.filter((n) => n.online).length} / {nodes.length} · ↓ {compact(sum((n) => n.metrics!.net_rx))}/s · ↑{" "}
+            {compact(sum((n) => n.metrics!.net_tx))}/s
           </span>
-          <span className="whitespace-nowrap" title="所列节点累计下载与上传流量">
-            总流量 ↓ <Num ch={SLOT.bytes}>{bytes(totalRx)}</Num> · ↑ <Num ch={SLOT.bytes}>{bytes(totalTx)}</Num>
-          </span>
+          <span className="whitespace-nowrap" title="所列节点累计下载与上传流量">总流量 ↓ {bytes(totalRx)} · ↑ {bytes(totalTx)}</span>
         </div>
       </div>
       <Table className="text-center text-sm @max-3xl:table-fixed @max-3xl:text-[10px]">
