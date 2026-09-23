@@ -45,6 +45,11 @@ export type Node = {
   currency: string
   billing_cycle: string
   expires_at: string | null
+  /**
+   * Days until `expires_at` on the hub's calendar, negative once past, null
+   * without a date. Absent on older hubs.
+   */
+  expires_in?: number | null
   traffic_limit: number
   traffic_mode: string
   traffic_reset_day: number
