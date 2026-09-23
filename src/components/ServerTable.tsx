@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type CSSProperties, type ReactNode } from "react"
+import { lazy, Suspense, useState, type CSSProperties, type ReactNode } from "react"
 import {
   siAlmalinux, siAlpinelinux, siArchlinux, siCentos, siDebian, siFedora, siLinux, siOpensuse, siRedhat,
   siRockylinux, siUbuntu, type SimpleIcon,
@@ -326,32 +326,25 @@ function Row({ node, index }: { node: Node; index: number }) {
 }
 
 /**
- * Group tabs appear only once the operator has grouped something, so a hub
- * without groups keeps the table it always had. The summary follows the tab.
- * The choice is held by App, so it survives a visit to a node's charts.
+ * One card per group, each with its own header and summary, in the order the
+ * operator's node order gives the groups; the ungrouped come last. A hub without
+ * groups -- or one predating them -- keeps the single table it always had.
  */
-export function ServerTable({ nodes: all, group, onGroup }: {
-  nodes: Node[]
-  /** null is every node, "" the ungrouped. */
-  group: string | null
-  onGroup: (group: string | null) => void
-}) {
-  const groups = groupsOf(all)
-  const ungrouped = all.filter((n) => !n.group).length
-  // A tab that has since emptied or been renamed -- 未分组 included -- falls back
-  // to every node rather than to an empty table, and is forgotten, so a later
-  // group of the same name does not take the page over.
-  const current = group === null || (group === "" ? ungrouped > 0 : groups.includes(group)) ? group : null
-  useEffect(() => {
-    if (current !== group) onGroup(current)
-  }, [current, group, onGroup])
-  const nodes = current === null ? all : all.filter((n) => (n.group ?? "") === current)
-  const tabs = [
-    [null, "全部", all.length] as const,
-    ...groups.map((g) => [g, g, all.filter((n) => n.group === g).length] as const),
-    ...(ungrouped ? [["", "未分组", ungrouped] as const] : []),
-  ]
+export function ServerTables({ nodes }: { nodes: Node[] }) {
+  const groups = groupsOf(nodes)
+  if (groups.length === 0) return <ServerTable title="服务器" nodes={nodes} />
+  const ungrouped = nodes.filter((n) => !n.group)
+  return (
+    <>
+      {/* Group names are free text, so the keys carry a prefix the ungrouped
+          card's cannot share. */}
+      {groups.map((g) => <ServerTable key={`=${g}`} title={g} nodes={nodes.filter((n) => n.group === g)} />)}
+      {ungrouped.length > 0 && <ServerTable key="*" title="未分组" nodes={ungrouped} />}
+    </>
+  )
+}
 
+function ServerTable({ title, nodes }: { title: string; nodes: Node[] }) {
   const online = nodes.filter((n) => n.online && n.metrics)
   const sum = (pick: (n: Node) => number) => online.reduce((total, n) => total + pick(n), 0)
   const totalRx = nodes.reduce((total, n) => total + n.total_rx, 0)
@@ -365,7 +358,7 @@ export function ServerTable({ nodes: all, group, onGroup }: {
   return (
     <section className="@container rounded-md border bg-card p-5 text-card-foreground shadow-sm max-md:p-2">
       <div className="grid grid-cols-[1fr_auto_1fr] items-baseline gap-x-3 gap-y-1 px-1 pb-3 max-md:pb-2 @max-3xl:grid-cols-1">
-        <h2 className="text-lg font-semibold max-md:text-sm">服务器</h2>
+        <h2 className="min-w-0 truncate text-lg font-semibold max-md:text-sm" title={title}>{title}</h2>
         <div className="tnum flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground max-md:text-[10px]">
           <span className="whitespace-nowrap">
             {/* The online count is reserved for as many digits as the total has,
@@ -379,25 +372,6 @@ export function ServerTable({ nodes: all, group, onGroup }: {
           </span>
         </div>
       </div>
-      {/* Bootstrap's pills. Wrapped where there is room, since dozens of groups
-          are possible and a mouse has no easy way to scroll a row sideways; on
-          a phone the row scrolls instead of pushing the table off the screen. */}
-      {groups.length > 0 && (
-        <div role="group" aria-label="分组" className="flex flex-wrap gap-1 px-1 pb-3 max-md:flex-nowrap max-md:overflow-x-auto max-md:pb-2">
-          {tabs.map(([value, label, count]) => (
-            <button
-              // Group names are free text, so they carry a prefix no key of
-              // the 全部 tab can share.
-              key={value === null ? "*" : `=${value}`}
-              aria-pressed={current === value}
-              onClick={() => onGroup(value)}
-              className="shrink-0 rounded px-3 py-1 text-sm whitespace-nowrap text-primary transition-colors hover:bg-accent aria-pressed:bg-primary aria-pressed:text-primary-foreground max-md:px-2 max-md:text-xs"
-            >
-              {label} <span className="tnum opacity-60">{count}</span>
-            </button>
-          ))}
-        </div>
-      )}
       <Table className="text-center text-sm @max-3xl:table-fixed @max-3xl:text-[10px]">
         <TableHeader>
           <TableRow className="border-0 hover:bg-transparent">

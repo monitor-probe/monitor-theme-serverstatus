@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore,
 import { ArrowUp, ChartLine, House, Moon, Sun, UserRound, type LucideIcon } from "lucide-react"
 
 import { NodePicker } from "@/components/NodePicker"
-import { ServerTable } from "@/components/ServerTable"
+import { ServerTables } from "@/components/ServerTable"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes } from "@/lib/api"
@@ -96,7 +96,6 @@ export default function App() {
   const [meError, setMeError] = useState("")
   const { nodes, error, closed } = useNodes()
   const open = useNodeRoute()
-  const [group, setGroup] = useState<string | null>(null)
 
   const loadMe = useCallback(() => {
     // `|| "..."`: HTTP/2 has no statusText, so a bodiless 502 from a proxy arrives
@@ -173,7 +172,7 @@ export default function App() {
           sorted.length === 0 ? (
             <p className="rounded-md border bg-card py-16 text-center text-sm text-muted-foreground shadow-sm">还没有节点</p>
           ) : (
-            <ServerTable nodes={sorted} group={group} onGroup={setGroup} />
+            <ServerTables nodes={sorted} />
           )
         ) : selected ? (
           <div className="grid gap-5 rounded-md border bg-card p-5 text-card-foreground shadow-sm max-md:gap-3 max-md:p-2.5 md:grid-cols-[220px_minmax(0,1fr)]">
