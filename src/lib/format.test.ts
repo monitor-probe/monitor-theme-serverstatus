@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, compact, cpuName, daysUntil, despike, distro, duration, monthUsage, osName, pair,
+  axisBytes, axisTop, bytes, compact, cpuName, daysUntil, despike, distro, duration, expiresIn, monthUsage, osName, pair,
   quarters, timeTicks, uptime,
 } from "./format.ts"
 
@@ -95,6 +95,10 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
   eq(daysUntil(at(-3)), -3, "已过期为负")
   eq(daysUntil(null), null, "无到期日")
   eq(daysUntil("不是日期"), null, "无法解析的日期")
+  // The hub's count wins, null included; only its absence falls back to the browser's.
+  eq(expiresIn({ expires_at: at(10), expires_in: -1 }), -1, "按 hub 的日历")
+  eq(expiresIn({ expires_at: null, expires_in: null }), null, "hub 说无到期日")
+  eq(expiresIn({ expires_at: at(-3) }), -3, "旧 hub 由浏览器计算")
 }
 
 eq(uptime(0), "—", "没上报过就不写时长")

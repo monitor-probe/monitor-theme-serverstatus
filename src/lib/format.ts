@@ -117,6 +117,15 @@ export function daysUntil(date?: string | null): number | null {
 }
 
 /**
+ * Days until the node expires, as the hub counts them: it renews an online node
+ * by its own calendar, and counting on the visitor's would show the node expired
+ * for hours before that. `daysUntil` serves only a hub from before `expires_in`.
+ */
+export function expiresIn(node: { expires_at: string | null; expires_in?: number | null }): number | null {
+  return node.expires_in !== undefined ? node.expires_in : daysUntil(node.expires_at)
+}
+
+/**
  * No expiry and no traffic cap are both rendered as the absence of a ceiling.
  * U+221E rather than the emoji, which arrives as a coloured tile from whatever
  * font the visitor has; this inherits the text colour and size.
