@@ -137,10 +137,7 @@ function useHistory(id: number, hours: number, series: "metrics" | "ping") {
     api<History>(`/nodes/${id}/metrics?hours=${hours}&points=${points}&series=${series}`)
       .then((next) => { if (active) setData(next) })
       .catch((e: Error) => {
-        // `|| "..."` as in App.tsx: HTTP/2 dropped statusText, so a bodiless
-        // failure from a proxy arrives as the empty string and renders as no
-        // error.
-        if (active) { setFailed(e.message || "网络错误"); setData({ metrics: [], ping: [], probes: {} }) }
+        if (active) { setFailed(e.message); setData({ metrics: [], ping: [], probes: {} }) }
       })
     return () => { active = false }
   }, [id, hours, series, attempt])

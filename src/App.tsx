@@ -98,11 +98,9 @@ export default function App() {
   const open = useNodeRoute()
 
   const loadMe = useCallback(() => {
-    // `|| "..."`: HTTP/2 has no statusText, so a bodiless 502 from a proxy arrives
-    // as "" and would otherwise render as still loading, with no retry button.
     return api<Me>("/me")
       .then((next) => { setMe(next); setMeError("") })
-      .catch((e: Error) => setMeError(e.message || "网络错误"))
+      .catch((e: Error) => setMeError(e.message))
   }, [])
 
   useEffect(() => {
