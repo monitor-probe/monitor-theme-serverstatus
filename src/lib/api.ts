@@ -83,13 +83,35 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * Every error the hub answers is one line of plain text written for the reader.
+ * Anything else came from something in front of it -- a proxy's error page, a
+ * CDN's challenge, an empty 502 -- and is described by its status instead.
+ */
+async function failure(res: Response): Promise<ApiError> {
+  const text = res.headers.get("content-type")?.startsWith("text/plain") ? (await res.text()).trim() : ""
+  return new ApiError(
+    res.status,
+    text || (res.status >= 500 ? `服务暂时无法访问（HTTP ${res.status}），稍后再试` : `请求被拦截（HTTP ${res.status}），稍后再试`),
+  )
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: init?.body ? { "content-type": "application/json", ...init?.headers } : init?.headers,
+  let res: Response
+  try {
+    res = await fetch(`/api${path}`, {
+      ...init,
+      headers: init?.body ? { "content-type": "application/json", ...init?.headers } : init?.headers,
+    })
+  } catch {
+    throw new ApiError(0, "网络连接失败，稍后再试")
+  }
+  if (!res.ok) throw await failure(res)
+  if (res.status === 204) return undefined as T
+  // A 200 carrying HTML is a proxy's page, not the hub's JSON.
+  return res.json().catch(() => {
+    throw new ApiError(res.status, "收到的不是状态数据，稍后再试")
   })
-  if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText)
-  return res.status === 204 ? (undefined as T) : res.json()
 }
 
 /** A malformed report must not remove every other node from the page. */
