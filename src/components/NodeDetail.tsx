@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import {
-  Area, AreaChart, Brush, CartesianGrid, ComposedChart, Line, LineChart, ResponsiveContainer,
+  Area, AreaChart, Brush, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts"
 
@@ -19,6 +19,10 @@ type Point = {
   disk_used: number
   net_rx: number
   net_tx: number
+  // The highest rate the agent measured over one report interval within the
+  // bucket, never below its mean. Absent from hubs predating it.
+  net_rx_max?: number
+  net_tx_max?: number
 }
 // `latency` is the bucket's median round trip, null when every probe in it timed
 // out. `band` is the range its answers spanned, absent when they spanned nothing.
@@ -417,25 +421,42 @@ export function NodeDetail({ node }: { node: Node }) {
   const m = node.metrics
   const away = node.last_seen ? Date.now() / 1000 - node.last_seen : 0
 
-  // The hub answers in seconds; the time axis requires milliseconds.
+  // The hub answers in seconds; the time axis requires milliseconds. Each rate
+  // also spans from its mean to its peak, which is the band drawn behind the
+  // line; without a peak the band has no height.
   const metricRows = useMemo(
-    () => (data?.metrics ?? []).map((m) => ({ ...m, ts: m.ts * 1_000 })),
+    () =>
+      (data?.metrics ?? []).map((m) => ({
+        ...m,
+        ts: m.ts * 1_000,
+        rx_band: [m.net_rx, m.net_rx_max ?? m.net_rx],
+        tx_band: [m.net_tx, m.net_tx_max ?? m.net_tx],
+      })),
     [data],
   )
+  // The window's highest rate each way, or null from a hub that sends no peak:
+  // a maximum of the means would be labelled a peak it is not.
+  const peak = useMemo(() => {
+    const rows = data?.metrics ?? []
+    if (!rows.some((m) => m.net_rx_max !== undefined)) return null
+    const max = (pick: (m: Point) => number | undefined) => rows.reduce((hi, m) => Math.max(hi, pick(m) ?? 0), 0)
+    return { rx: max((m) => m.net_rx_max), tx: max((m) => m.net_tx_max) }
+  }, [data])
 
   // Axis tops for the two panels with no capacity to measure against. CPU and a
   // transfer rate do not express fullness: against a fixed 0-100, a machine
   // sitting at 0.4% draws as a line along the panel's floor. Memory and disk keep
   // their totals as tops, where fullness is the entire question.
   const tops = useMemo(() => {
-    const max = (pick: (m: Point) => number) =>
+    const max = (pick: (m: (typeof metricRows)[number]) => number) =>
       metricRows.reduce((hi, m) => Math.max(hi, pick(m)), 0)
     return {
       // A floor of 4%, or a machine that never exceeds 0.4% would get an axis of
       // 0-0.4 and render every scheduler blip as a peak. Capped at 100.
       cpu: axisTop(max((m) => m.cpu), 4, 10, 100),
-      // Base 1024, so the steps are round in the unit `axisBytes` prints.
-      rate: axisTop(max((m) => Math.max(m.net_rx, m.net_tx)), 1024, 1024),
+      // Base 1024, so the steps are round in the unit `axisBytes` prints. Fitted
+      // to the band rather than the line, or the peaks would run off the top.
+      rate: axisTop(max((m) => Math.max(m.rx_band[1], m.tx_band[1])), 1024, 1024),
     }
   }, [metricRows])
 
@@ -509,29 +530,62 @@ export function NodeDetail({ node }: { node: Node }) {
           </Panel>
 
           {/* A rate has no total to be a fraction of, so this one climbs the
-              ladder like CPU rather than pinning to a capacity. */}
+              ladder like CPU rather than pinning to a capacity.
+
+              The line is the bucket's mean, so it integrates to the traffic
+              totals, and a 15-second speed test averaged over its minute draws
+              at a quarter of the rate it ran at. The band behind it reaches the
+              highest rate measured within the bucket, and is edged because a
+              one-minute burst on a day's axis is narrower than a pixel, where
+              a fill alone does not show. Dashed, so the edge does not read as a
+              third rate beside the two lines. Its lower edge lies under the
+              line. */}
           <Panel
             title={
               <>
                 网络速率
-                <span className="ml-3 text-chart-2">● 下行</span>
-                <span className="ml-2 text-chart-3">● 上行</span>
+                <span className="ml-3 whitespace-nowrap text-chart-2">
+                  ● 下行{peak && <span className="tnum text-muted-foreground"> 峰值 {rate(peak.rx)}</span>}
+                </span>
+                <span className="ml-2 whitespace-nowrap text-chart-3">
+                  ● 上行{peak && <span className="tnum text-muted-foreground"> 峰值 {rate(peak.tx)}</span>}
+                </span>
               </>
             }
           >
             <ResponsiveContainer>
-              <LineChart data={metricRows}>
+              <ComposedChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...timeAxis(metricRows, hours)} />
                 <YAxis domain={[0, tops.rate]} ticks={quarters(tops.rate)} tickFormatter={axisBytes} unit="/s" width={Y_WIDTH} {...AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
-                  formatter={(v) => rate(Number(v))}
+                  formatter={(v, name, item) => {
+                    const top = item?.payload?.[item.dataKey === "net_rx" ? "net_rx_max" : "net_tx_max"]
+                    return [top === undefined ? rate(Number(v)) : `均值 ${rate(Number(v))} · 峰值 ${rate(top)}`, name]
+                  }}
                   contentStyle={TIP}
                 />
+                {[
+                  { key: "rx", stroke: "var(--color-chart-2)" },
+                  { key: "tx", stroke: "var(--color-chart-3)" },
+                ].map((s) => (
+                  <Area
+                    key={s.key}
+                    dataKey={`${s.key}_band`}
+                    stroke={s.stroke}
+                    strokeWidth={1}
+                    strokeDasharray="2 2"
+                    fill={s.stroke}
+                    fillOpacity={0.16}
+                    isAnimationActive={false}
+                    tooltipType="none"
+                    legendType="none"
+                  />
+                ))}
                 <Line dataKey="net_rx" name="下行" stroke="var(--color-chart-2)" {...SERIES} />
                 <Line dataKey="net_tx" name="上行" stroke="var(--color-chart-3)" {...SERIES} />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </Panel>
 
