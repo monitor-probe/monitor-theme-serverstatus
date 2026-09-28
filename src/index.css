@@ -50,7 +50,10 @@
   --dot-offline: var(--bar-danger);
 }
 
+/* `color-scheme` draws the browser's own controls -- the search
+   box's clear button, scrollbars -- in the dark palette as well. */
 .dark {
+  color-scheme: dark;
   --background: #31363b;
   --foreground: #f1f1f1;
   --card: #1c1d26;
