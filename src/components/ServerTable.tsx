@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { groupsOf, type Node } from "@/lib/api"
 import {
-  bytes, compact, CYCLES, distro, duration, expiresIn, FOREVER, money, monthUsage, osName, cpuName, pair,
+  bytes, compact, cycle, distro, duration, expiresIn, FOREVER, money, monthUsage, osName, cpuName, pair,
   percent, rate, uptime,
 } from "@/lib/format"
 import { Link } from "@/lib/route"
@@ -191,7 +191,7 @@ function Details({ node }: { node: Node }) {
           {node.online ? (m ? uptime(m.uptime) : "等待上报") : away >= 60 ? uptime(away) : "刚刚"}
         </Line>
         <Line label="续费">
-          {node.price > 0 ? `${money(node.price, node.currency)} / ${CYCLES[node.billing_cycle] ?? node.billing_cycle}` : "免费"}
+          {node.price > 0 ? `${money(node.price, node.currency)} / ${cycle(node.billing_cycle)}` : "免费"}
         </Line>
         <Line label="到期">
           {node.expires_at

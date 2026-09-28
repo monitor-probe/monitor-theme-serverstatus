@@ -4,7 +4,7 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, compact, cpuName, daysUntil, despike, distro, duration, expiresIn, monthUsage, osName, pair,
+  axisBytes, axisTop, bytes, compact, cpuName, cycle, daysUntil, despike, distro, duration, expiresIn, monthUsage, osName, pair,
   quarters, timeTicks, uptime,
 } from "./format.ts"
 
@@ -151,6 +151,9 @@ eq(duration(76 * 86400 + 5), "76 天", "超过一天只写天数")
   // 窗口按样本数计，桶的时长由调用方按桶间隔折算。
   eq(despike([20, 900, 20, 20, 20], 3)[1], 20, "窗口可以调小")
 }
+
+// 旧 hub 存名称，新 hub 把其余长度存成 `<n>m`；两种写法同一个长度读法一致。
+eq(["yearly", "12m", "60m", "18m", "once", "weekly"].map(cycle), ["年付", "年付", "5 年付", "18 个月付", "一次性", "weekly"], "付款周期")
 
 eq(osName("Debian GNU/Linux 12 (bookworm)"), "Debian 12", "发行版名去掉代号")
 eq(cpuName("Intel(R) Xeon(R) CPU E5-2680 8-Core Processor"), "Intel Xeon E5-2680", "CPU 名去掉商标和核数")

@@ -138,14 +138,17 @@ export function money(amount: number, currency: string): string {
   return `${SYMBOLS[currency] ?? ""}${amount.toFixed(2)}${SYMBOLS[currency] ? "" : ` ${currency}`}`
 }
 
-export const CYCLES: Record<string, string> = {
-  monthly: "月付",
-  quarterly: "季付",
-  semiannual: "半年付",
-  yearly: "年付",
-  biennial: "两年付",
-  triennial: "三年付",
-  once: "一次性",
+// Hub 1.3.0 and earlier store only these names; later hubs store any other
+// length as `<n>m`.
+const NAMED_CYCLES: Record<string, number> = { monthly: 1, quarterly: 3, semiannual: 6, yearly: 12, biennial: 24, triennial: 36 }
+const CYCLE_WORDS: Record<number, string> = { 1: "月付", 3: "季付", 6: "半年付", 12: "年付" }
+
+/** How a billing cycle reads: 月付, 5 年付, 18 个月付, 一次性. */
+export function cycle(billing: string): string {
+  if (billing === "once") return "一次性"
+  const months = NAMED_CYCLES[billing] ?? Number(/^(\d+)m$/.exec(billing)?.[1])
+  if (!months) return billing
+  return CYCLE_WORDS[months] ?? (months % 12 ? `${months} 个月付` : `${months / 12} 年付`)
 }
 
 // Hoisted out of `clock`: recharts calls a tickFormatter for every sample when
