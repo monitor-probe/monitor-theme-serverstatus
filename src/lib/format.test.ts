@@ -5,7 +5,7 @@
 // Nothing imports it, so the bundle never includes it.
 import {
   axisBytes, axisTop, bytes, compact, cpuName, cycle, daysUntil, despike, distro, duration, expiresIn, monthUsage, osName, pair,
-  quarters, timeTicks, uptime,
+  quarters, tickClock, timeTicks, uptime, windows,
 } from "./format.ts"
 
 let failed = 0
@@ -82,7 +82,32 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
     "刻度间距均匀",
   )
   eq(timeTicks(to, to - day), [], "反向区间不产出刻度")
+
+  // Past what two weeks can cover, the first of a month; either way a window of
+  // days is labelled by date alone.
+  const midnight = (t: number) => new Date(t).getHours() === 0 && new Date(t).getMinutes() === 0
+  for (const days of [30, 90, 180, 365]) {
+    const wide = timeTicks(to - days * day, to)
+    eq(wide.length >= 3 && wide.length <= 8, true, `${days} 天窗 3 到 8 个刻度（得到 ${wide.length}）`)
+    eq(wide.every(midnight), true, `${days} 天窗的刻度落在零点`)
+  }
+  eq(timeTicks(to - 365 * day, to).every((t) => new Date(t).getDate() === 1), true, "一年窗的刻度落在每月 1 日")
+  const october = new Date(2026, 9, 1).getTime()
+  eq(tickClock(timeTicks(to - 365 * day, to), 8760)(october), "10/01", "全在零点的刻度只写日期")
+  eq(tickClock(timeTicks(to - 2 * day, to), 8760)(october + 6 * 3_600_000), "10/01 06:00", "缩放到两天写回时刻")
+  eq(tickClock(timeTicks(to - day, to), 24)(october + 6 * 3_600_000), "06:00", "一天之内只写时刻")
 }
+
+// windows: the round windows shorter than the history kept, then all of it.
+{
+  const hours = (days: number) => windows(days).map((w) => w.hours)
+  eq(hours(7), [1, 6, 24, 168], "保留一周与原来的四档相同")
+  eq(hours(90), [1, 6, 24, 168, 720, 2160], "默认 90 天")
+  eq(windows(365).at(-1), { hours: 8760, label: "1 年" }, "一年")
+  eq(windows(45).at(-1), { hours: 1080, label: "45 天" }, "不在取整档位上的保留期作为最后一档")
+  eq(windows(1).map((w) => w.label), ["1 小时", "6 小时", "1 天"], "一天")
+}
+
 
 // daysUntil: whole days, negative once past, null when there is no date.
 {
