@@ -203,11 +203,13 @@ const WINDOWS = [1, 6, 24, 168, 720, 2160]
  * The chart windows offered for a hub keeping `days` of history, which `/api/me`
  * reports as `history_days`: the round windows shorter than it, then the whole
  * of it. A window past it would be narrowed by the hub without saying so, and
- * drawn under a label claiming more than it holds.
+ * drawn under a label claiming more than it holds. A round window the whole
+ * exceeds by less than a quarter is left out, as it would sit beside a tab of
+ * nearly the same width: 30 and 31 days, 90 and 92.
  */
 export function windows(days: number): { hours: number; label: string }[] {
   const whole = Math.max(1, Math.floor(days)) * 24
-  return [...WINDOWS.filter((h) => h < whole), whole].map((hours) => ({
+  return [...WINDOWS.filter((h) => h * 1.25 <= whole), whole].map((hours) => ({
     hours,
     label: hours < 24 ? `${hours} 小时` : hours === 8760 ? "1 年" : `${hours / 24} 天`,
   }))
