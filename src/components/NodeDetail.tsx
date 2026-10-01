@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { deployed, Dot, Flag } from "@/components/ServerTable"
 import { api, type Node } from "@/lib/api"
 import {
-  axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, timeTicks, uptime,
+  axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, RATE_FLOOR, rateAxis, timeTicks, uptime,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -112,9 +112,8 @@ type History = { metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Los
  * One window of history.
  *
  * A refused request is kept apart from an empty window. The hub builds at most
- * four windows at once, since each holds the connection the agents report
- * through, and answers a fifth with a 503; drawn as an empty chart, that answer
- * would misdirect the reader, so callers show it with a retry.
+ * four windows at once and answers a fifth with a 503; drawn as an empty chart,
+ * that answer would misdirect the reader, so callers show it with a retry.
  */
 function useHistory(id: number, hours: number, series: "metrics" | "ping") {
   const [data, setData] = useState<History | null>(null)
@@ -423,17 +422,20 @@ export function NodeDetail({ node }: { node: Node }) {
 
   // The hub answers in seconds; the time axis requires milliseconds. Each rate
   // also spans from its mean to its peak, which is the band drawn behind the
-  // line; without a peak the band has no height.
-  const metricRows = useMemo(
-    () =>
-      (data?.metrics ?? []).map((m) => ({
-        ...m,
-        ts: m.ts * 1_000,
-        rx_band: [m.net_rx, m.net_rx_max ?? m.net_rx],
-        tx_band: [m.net_tx, m.net_tx_max ?? m.net_tx],
-      })),
-    [data],
-  )
+  // line; without a peak the band has no height. The rates drawn are lifted to
+  // the floor of their log axis, which has no zero, while `net_rx` and `net_tx`
+  // keep the hub's figures for the tooltip.
+  const metricRows = useMemo(() => {
+    const lift = (v: number) => Math.max(v, RATE_FLOOR)
+    return (data?.metrics ?? []).map((m) => ({
+      ...m,
+      ts: m.ts * 1_000,
+      rx: lift(m.net_rx),
+      tx: lift(m.net_tx),
+      rx_band: [lift(m.net_rx), lift(m.net_rx_max ?? m.net_rx)],
+      tx_band: [lift(m.net_tx), lift(m.net_tx_max ?? m.net_tx)],
+    }))
+  }, [data])
   // The window's highest rate each way, or null from a hub that sends no peak:
   // a maximum of the means would be labelled a peak it is not.
   const peak = useMemo(() => {
@@ -443,20 +445,24 @@ export function NodeDetail({ node }: { node: Node }) {
     return { rx: max((m) => m.net_rx_max), tx: max((m) => m.net_tx_max) }
   }, [data])
 
-  // Axis tops for the two panels with no capacity to measure against. CPU and a
+  // Axes for the two panels with no capacity to measure against. CPU and a
   // transfer rate do not express fullness: against a fixed 0-100, a machine
   // sitting at 0.4% draws as a line along the panel's floor. Memory and disk keep
   // their totals as tops, where fullness is the entire question.
-  const tops = useMemo(() => {
+  const axes = useMemo(() => {
     const max = (pick: (m: (typeof metricRows)[number]) => number) =>
       metricRows.reduce((hi, m) => Math.max(hi, pick(m)), 0)
+    // A floor of 4%, or a machine that never exceeds 0.4% would get an axis of
+    // 0-0.4 and render every scheduler blip as a peak. Capped at 100.
+    const cpu = axisTop(max((m) => m.cpu), 4, 100)
     return {
-      // A floor of 4%, or a machine that never exceeds 0.4% would get an axis of
-      // 0-0.4 and render every scheduler blip as a peak. Capped at 100.
-      cpu: axisTop(max((m) => m.cpu), 4, 10, 100),
-      // Base 1024, so the steps are round in the unit `axisBytes` prints. Fitted
-      // to the band rather than the line, or the peaks would run off the top.
-      rate: axisTop(max((m) => Math.max(m.rx_band[1], m.tx_band[1])), 1024, 1024),
+      cpu: { domain: [0, cpu], ticks: quarters(cpu) },
+      // From the slowest rate drawn to the highest peak, so the band stays
+      // within the panel.
+      rate: rateAxis(
+        metricRows.reduce((lo, m) => Math.min(lo, m.rx, m.tx), Infinity),
+        max((m) => Math.max(m.rx_band[1], m.tx_band[1])),
+      ),
     }
   }, [metricRows])
 
@@ -497,7 +503,7 @@ export function NodeDetail({ node }: { node: Node }) {
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...timeAxis(metricRows, hours)} />
-                <YAxis domain={[0, tops.cpu]} ticks={quarters(tops.cpu)} unit="%" width={Y_WIDTH} {...AXIS} />
+                <YAxis {...axes.cpu} unit="%" width={Y_WIDTH} {...AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   formatter={(v) => [`${Number(v).toFixed(1)}%`, "CPU"]}
@@ -529,8 +535,12 @@ export function NodeDetail({ node }: { node: Node }) {
             </ResponsiveContainer>
           </Panel>
 
-          {/* A rate has no total to be a fraction of, so this one climbs the
-              ladder like CPU rather than pinning to a capacity.
+          {/* A rate has no total to be a fraction of, and its range spans orders
+              of magnitude: a week of one node runs from 0.2 KB/s idle to bursts
+              of 70 MB/s. Fitted to the bursts, a linear axis drew the median
+              minute less than a pixel above the floor on seven of nine nodes
+              at the day window, so this one is logarithmic, each tenfold step
+              the same height.
 
               The line is the bucket's mean, so it integrates to the traffic
               totals, and a 15-second speed test averaged over its minute draws
@@ -557,12 +567,15 @@ export function NodeDetail({ node }: { node: Node }) {
               <ComposedChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...timeAxis(metricRows, hours)} />
-                <YAxis domain={[0, tops.rate]} ticks={quarters(tops.rate)} tickFormatter={axisBytes} unit="/s" width={Y_WIDTH} {...AXIS} />
+                <YAxis scale="log" {...axes.rate} tickFormatter={axisBytes} unit="/s" width={Y_WIDTH} {...AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
-                  formatter={(v, name, item) => {
-                    const top = item?.payload?.[item.dataKey === "net_rx" ? "net_rx_max" : "net_tx_max"]
-                    return [top === undefined ? rate(Number(v)) : `均值 ${rate(Number(v))} · 峰值 ${rate(top)}`, name]
+                  // The hub's figures rather than `v`, which is lifted to the
+                  // axis floor.
+                  formatter={(_, name, item) => {
+                    const mean = item?.payload?.[`net_${item.dataKey}`]
+                    const top = item?.payload?.[`net_${item.dataKey}_max`]
+                    return [top === undefined ? rate(mean) : `均值 ${rate(mean)} · 峰值 ${rate(top)}`, name]
                   }}
                   contentStyle={TIP}
                 />
@@ -583,8 +596,8 @@ export function NodeDetail({ node }: { node: Node }) {
                     legendType="none"
                   />
                 ))}
-                <Line dataKey="net_rx" name="下行" stroke="var(--color-chart-2)" {...SERIES} />
-                <Line dataKey="net_tx" name="上行" stroke="var(--color-chart-3)" {...SERIES} />
+                <Line dataKey="rx" name="下行" stroke="var(--color-chart-2)" {...SERIES} />
+                <Line dataKey="tx" name="上行" stroke="var(--color-chart-3)" {...SERIES} />
               </ComposedChart>
             </ResponsiveContainer>
           </Panel>
