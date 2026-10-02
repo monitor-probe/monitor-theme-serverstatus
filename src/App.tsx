@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore,
 import { ArrowUp, ChartLine, House, Moon, Sun, UserRound, type LucideIcon } from "lucide-react"
 
 import { NodePicker } from "@/components/NodePicker"
-import { ServerTables } from "@/components/ServerTable"
+import { ServerTable } from "@/components/ServerTable"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes } from "@/lib/api"
@@ -108,6 +108,8 @@ export default function App() {
   const [meError, setMeError] = useState("")
   const { nodes, error, closed } = useNodes()
   const open = useNodeRoute()
+  // The list's group tab, held here so it survives a visit to a node's page.
+  const [group, setGroup] = useState<string | null>(null)
 
   const loadMe = useCallback(() => {
     return api<Me>("/me")
@@ -182,7 +184,7 @@ export default function App() {
           sorted.length === 0 ? (
             <p className="rounded-md border bg-card py-16 text-center text-sm text-muted-foreground shadow-sm">还没有节点</p>
           ) : (
-            <ServerTables nodes={sorted} />
+            <ServerTable nodes={sorted} group={group} onGroup={setGroup} />
           )
         ) : selected ? (
           <div className="grid gap-5 rounded-md border bg-card p-5 text-card-foreground shadow-sm max-md:gap-3 max-md:p-2.5 md:grid-cols-[220px_minmax(0,1fr)]">

@@ -22,7 +22,9 @@
   --primary: #337ab7;
   --primary-foreground: #ffffff;
   --muted: #f9f9f9;
-  --muted-foreground: #777777;
+  /* Darker than Bootstrap's #777, which falls short of 4.5:1 on the card, the
+     striped rows and the page behind them; this clears it on all three. */
+  --muted-foreground: #707070;
   --accent: #e6e6e6;
   --accent-foreground: #212121;
   --destructive: #a94442;
