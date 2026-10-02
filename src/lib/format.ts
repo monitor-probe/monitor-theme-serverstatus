@@ -132,10 +132,30 @@ export function expiresIn(node: { expires_at: string | null; expires_in?: number
  */
 export const FOREVER = "∞"
 
-const SYMBOLS: Record<string, string> = { USD: "$", CNY: "¥", EUR: "€", GBP: "£", JPY: "¥" }
+const MONEY = new Map<string, Intl.NumberFormat>()
 
+/**
+ * A price as zh-CN writes it: ¥12.00, US$12.00, HK$12.00, JP¥1,200, and the code
+ * ahead of the amount where the locale has no symbol, as in SGD 12.00. The
+ * locale is fixed so the figure does not vary with the browser's language, and
+ * so JPY reads JP¥, apart from CNY. Fractions stop at two places, the precision
+ * the price is entered in, not at the currency's minor unit: rounding to whole
+ * yen would show a price of 0.4 as JP¥0. A formatter costs about 100 µs to
+ * build, hence one per currency.
+ */
 export function money(amount: number, currency: string): string {
-  return `${SYMBOLS[currency] ?? ""}${amount.toFixed(2)}${SYMBOLS[currency] ? "" : ` ${currency}`}`
+  try {
+    let format = MONEY.get(currency)
+    if (!format) {
+      format = new Intl.NumberFormat("zh-CN", { style: "currency", currency, maximumFractionDigits: 2 })
+      MONEY.set(currency, format)
+    }
+    return format.format(amount)
+  } catch {
+    // Intl throws on anything but three letters, which hubs before 1.3.1 stored
+    // unchecked when written through the API.
+    return `${currency} ${amount.toFixed(2)}`.trim()
+  }
 }
 
 // Hub 1.3.0 and earlier store only these names; later hubs store any other

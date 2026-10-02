@@ -4,8 +4,8 @@
 //
 // Nothing imports it, so the bundle never includes it.
 import {
-  axisBytes, axisTop, bytes, compact, cpuName, cycle, daysUntil, despike, distro, duration, expiresIn, monthUsage, osName, pair,
-  quarters, timeTicks, uptime,
+  axisBytes, axisTop, bytes, compact, cpuName, cycle, daysUntil, despike, distro, duration, expiresIn, money, monthUsage,
+  osName, pair, quarters, timeTicks, uptime,
 } from "./format.ts"
 
 let failed = 0
@@ -154,6 +154,15 @@ eq(duration(76 * 86400 + 5), "76 天", "超过一天只写天数")
 
 // 旧 hub 存名称，新 hub 把其余长度存成 `<n>m`；两种写法同一个长度读法一致。
 eq(["yearly", "12m", "60m", "18m", "once", "weekly"].map(cycle), ["年付", "年付", "5 年付", "18 个月付", "一次性", "weekly"], "付款周期")
+
+// money: zh-CN whatever the browser's language, so US$ stands apart from HK$
+// and JP¥ from ¥; a code Intl refuses is shown rather than thrown.
+eq(money(100, "CNY"), "¥100.00", "人民币")
+eq(money(100, "USD"), "US$100.00", "美元与港币等其它元区分开")
+eq(money(100, "HKD"), "HK$100.00", "港币同样符号在前")
+eq(money(1200, "JPY"), "JP¥1,200", "日元不带小数，与人民币分开")
+eq(money(1200.5, "JPY"), "JP¥1,200.5", "日元填了小数照实显示，不取整")
+eq(money(100, "港币"), "港币 100.00", "旧 hub 存下的非法代码不抛错")
 
 eq(osName("Debian GNU/Linux 12 (bookworm)"), "Debian 12", "发行版名去掉代号")
 eq(cpuName("Intel(R) Xeon(R) CPU E5-2680 8-Core Processor"), "Intel Xeon E5-2680", "CPU 名去掉商标和核数")
