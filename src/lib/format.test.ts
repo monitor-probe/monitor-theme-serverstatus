@@ -5,7 +5,7 @@
 // Nothing imports it, so the bundle never includes it.
 import {
   axisBytes, axisTop, bytes, compact, cpuName, cycle, daysUntil, despike, distro, duration, expiresIn, money, monthUsage,
-  osName, pair, quarters, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime, windows,
+  osName, pair, quarters, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime, windows, withGaps,
 } from "./format.ts"
 
 let failed = 0
@@ -44,6 +44,17 @@ eq(axisTop(0.4, 4, 100), 4, "闲置机器拿到地板值")
 eq(axisTop(63, 4, 100), 80, "63% -> 0/20/40/60/80")
 eq(axisTop(200, 4, 100), 100, "百分比封顶")
 eq(quarters(32 * 1024 ** 2).map(axisBytes), ["0 B", "8 MB", "16 MB", "24 MB", "32 MB"], "四条网格线都是整值")
+
+// withGaps: an empty row in a gap over twice the usual spacing, none for one
+// missing bucket or an agent reporting every few minutes. Gaps print negative.
+const gapped = (list: number[]) => withGaps(list.map((ts) => ({ ts, v: 1 }))).map((r) => ("v" in r ? r.ts : -r.ts))
+eq(gapped([0, 60, 120, 180, 600, 660]), [0, 60, 120, 180, -390, 600, 660], "离线的一段断开")
+eq(gapped([0, 60, 180, 240]), [0, 60, 180, 240], "缺一个桶不断开")
+eq(gapped([0, 300, 600, 900, 1200]), [0, 300, 600, 900, 1200], "五分钟上报一次的 agent 照常连线")
+eq(gapped([0, 60, 300, 600, 900, 1200]), [0, 60, 300, 600, 900, 1200], "间隔不齐时按中位数而非最小值")
+eq(gapped([0, 60, 660]), [0, 60, -360, 660], "两段间隔时较短的一段是常规间隔")
+eq(gapped([0]), [0], "单点")
+eq(gapped([]), [], "空")
 
 // rateAxis: from the rung at or below the slowest rate to the rung at or above
 // the highest peak, every label round, at most six of them.

@@ -323,6 +323,23 @@ export function quarters(top: number): number[] {
 }
 
 /**
+ * `rows` with an empty row in each gap over twice their usual spacing, where a
+ * chart breaks its line rather than drawing a straight one across a stretch with
+ * no samples -- a day offline would read as a day of steady load. The usual
+ * spacing is the median gap rather than the hub's bucket: an agent reporting
+ * every few minutes leaves a row only every few buckets.
+ */
+export function withGaps<T extends { ts: number }>(rows: T[]): (T | { ts: number })[] {
+  const gaps = rows.slice(1).map((r, i) => r.ts - rows[i].ts).sort((a, b) => a - b)
+  // The lower median: of two gaps, the shorter is the spacing and the longer
+  // the one in question.
+  const usual = gaps[(gaps.length - 1) >> 1]
+  return rows.flatMap((r, i) =>
+    i > 0 && r.ts - rows[i - 1].ts > 2 * usual ? [{ ts: (r.ts + rows[i - 1].ts) / 2 }, r] : [r],
+  )
+}
+
+/**
  * The rungs of a logarithmic byte axis: 1, 10 and 100 of each binary unit, so
  * every gridline prints as a round label -- 100 B, 1 KB, 10 KB, 100 KB, 1 MB.
  * Adjacent rungs are 10 apart, or 10.24 across a unit, which draws as even.

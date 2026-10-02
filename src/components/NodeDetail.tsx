@@ -9,7 +9,7 @@ import { deployed, Dot, Flag } from "@/components/ServerTable"
 import { api, type Node } from "@/lib/api"
 import {
   axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime,
-  windows,
+  windows, withGaps,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -443,6 +443,9 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
       tx_band: [lift(m.net_tx), lift(m.net_tx_max ?? m.net_tx)],
     }))
   }, [data])
+  // What the four panels draw: the rows above, broken where the node was silent.
+  // The axes are fitted to the rows alone.
+  const chartRows = useMemo(() => withGaps(metricRows), [metricRows])
   // The window's highest rate each way, or null from a hub that sends no peak:
   // a maximum of the means would be labelled a peak it is not.
   const peak = useMemo(() => {
@@ -472,7 +475,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
       ),
     }
   }, [metricRows])
-  const xAxis = timeAxis(metricRows, hours)
+  const xAxis = timeAxis(chartRows, hours)
 
   return (
     <div className="space-y-4">
@@ -509,7 +512,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
         <div className="space-y-5">
           <Panel title="CPU">
             <ResponsiveContainer>
-              <AreaChart data={metricRows}>
+              <AreaChart data={chartRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...xAxis} />
                 <YAxis {...axes.cpu} unit="%" {...VALUE_AXIS} />
@@ -529,7 +532,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               title because the axis top is claiming it. */}
           <Panel title={`内存 · ${bytes(node.mem_total)}`}>
             <ResponsiveContainer>
-              <AreaChart data={metricRows}>
+              <AreaChart data={chartRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...xAxis} />
                 <YAxis domain={[0, node.mem_total]} ticks={quarters(node.mem_total)} tickFormatter={axisBytes} {...VALUE_AXIS} />
@@ -571,7 +574,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
             }
           >
             <ResponsiveContainer>
-              <ComposedChart data={metricRows}>
+              <ComposedChart data={chartRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...xAxis} />
                 <YAxis scale="log" {...axes.rate} tickFormatter={axisBytes} unit="/s" {...VALUE_AXIS} />
@@ -613,7 +616,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               axis tracks the window's own maximum. */}
           <Panel title={`硬盘 · ${bytes(node.disk_total)}`}>
             <ResponsiveContainer>
-              <AreaChart data={metricRows}>
+              <AreaChart data={chartRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...xAxis} />
                 <YAxis domain={[0, node.disk_total]} ticks={quarters(node.disk_total)} tickFormatter={axisBytes} {...VALUE_AXIS} />
