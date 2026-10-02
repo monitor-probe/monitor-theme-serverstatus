@@ -265,7 +265,7 @@ function Row({ node, index }: { node: Node; index: number }) {
       </TableRow>
       {open && (
         <TableRow className={shade}>
-          <TableCell colSpan={12} className="border-t-0! p-0! text-left whitespace-normal">
+          <TableCell colSpan={12} className="p-0! text-left whitespace-normal">
             <Details node={node} />
           </TableCell>
         </TableRow>

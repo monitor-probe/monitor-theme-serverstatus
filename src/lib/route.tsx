@@ -26,7 +26,7 @@ export function useNodeRoute() {
  * one more press of back.
  */
 function navigate(href: string) {
-  if (location.pathname !== href) history.pushState({}, "", href)
+  if (location.pathname + location.search + location.hash !== href) history.pushState({}, "", href)
   dispatchEvent(new PopStateEvent("popstate"))
   scrollTo(0, 0)
 }

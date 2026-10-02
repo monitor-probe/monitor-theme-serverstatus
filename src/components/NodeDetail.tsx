@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   Area, AreaChart, Brush, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
+  Tooltip, XAxis, YAxis, type DotItemDotProps,
 } from "recharts"
 
 import { Skeleton } from "@/components/ui/skeleton"
@@ -57,6 +57,17 @@ const AXIS = { stroke: "currentColor", fontSize: 11, tickLine: false, axisLine: 
 // every range change, on a page meant to be read at a glance, and on the latency
 // chart across seven hundred points per probe.
 const SERIES = { dot: false as const, strokeWidth: 1.5, isAnimationActive: false }
+
+// A resource chart's series. A row with a gap on either side has no neighbour to
+// draw a line to, so it is marked with a dot; without one, a node back for a
+// single bucket after a stretch offline would not show at all.
+const RESOURCE_SERIES = {
+  ...SERIES,
+  dot: ({ cx, cy, index, points, stroke }: DotItemDotProps) =>
+    cy == null || points[index - 1]?.y != null || points[index + 1]?.y != null ? null : (
+      <circle cx={cx} cy={cy} r={2} fill={stroke} />
+    ),
+}
 
 // One width for every stacked panel's value axis. Sized to their own labels --
 // 40px under "100%", 68px under "172 MB" -- the four plot areas would be offset by
@@ -475,7 +486,9 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
       ),
     }
   }, [metricRows])
-  const xAxis = timeAxis(chartRows, hours)
+  // Held across the live pushes that re-render this page, or each would hand
+  // the four axes a new formatter and lay them out again.
+  const xAxis = useMemo(() => timeAxis(chartRows, hours), [chartRows, hours])
 
   return (
     <div className="space-y-4">
@@ -520,7 +533,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                   {...TOOLTIP}
                   formatter={(v) => [`${Number(v).toFixed(1)}%`, "CPU"]}
                 />
-                <Area dataKey="cpu" stroke="var(--color-chart-1)" fill="var(--color-chart-1)" fillOpacity={0.15} {...SERIES} />
+                <Area dataKey="cpu" stroke="var(--color-chart-1)" fill="var(--color-chart-1)" fillOpacity={0.15} {...RESOURCE_SERIES} />
               </AreaChart>
             </ResponsiveContainer>
           </Panel>
@@ -540,7 +553,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                   {...TOOLTIP}
                   formatter={(v) => bytes(Number(v))}
                 />
-                <Area dataKey="mem_used" name="内存" stroke="var(--color-chart-4)" fill="var(--color-chart-4)" fillOpacity={0.15} {...SERIES} />
+                <Area dataKey="mem_used" name="内存" stroke="var(--color-chart-4)" fill="var(--color-chart-4)" fillOpacity={0.15} {...RESOURCE_SERIES} />
               </AreaChart>
             </ResponsiveContainer>
           </Panel>
@@ -605,8 +618,8 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                     legendType="none"
                   />
                 ))}
-                <Line dataKey="rx" name="下行" stroke="var(--color-chart-2)" {...SERIES} />
-                <Line dataKey="tx" name="上行" stroke="var(--color-chart-3)" {...SERIES} />
+                <Line dataKey="rx" name="下行" stroke="var(--color-chart-2)" {...RESOURCE_SERIES} />
+                <Line dataKey="tx" name="上行" stroke="var(--color-chart-3)" {...RESOURCE_SERIES} />
               </ComposedChart>
             </ResponsiveContainer>
           </Panel>
@@ -624,7 +637,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                   {...TOOLTIP}
                   formatter={(v) => bytes(Number(v))}
                 />
-                <Area dataKey="disk_used" name="硬盘" stroke="var(--color-chart-5)" fill="var(--color-chart-5)" fillOpacity={0.15} {...SERIES} />
+                <Area dataKey="disk_used" name="硬盘" stroke="var(--color-chart-5)" fill="var(--color-chart-5)" fillOpacity={0.15} {...RESOURCE_SERIES} />
               </AreaChart>
             </ResponsiveContainer>
           </Panel>
