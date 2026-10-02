@@ -8,7 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { deployed, Dot, Flag } from "@/components/ServerTable"
 import { api, type Node } from "@/lib/api"
 import {
-  axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, RATE_FLOOR, rateAxis, timeTicks, uptime,
+  axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime,
+  windows,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -45,13 +46,6 @@ type Probes = Record<string, string>
  * regardless of what the probe does.
  */
 type Loss = Record<string, number>
-
-const RANGES = [
-  { hours: 1, label: "1 小时" },
-  { hours: 6, label: "6 小时" },
-  { hours: 24, label: "24 小时" },
-  { hours: 168, label: "7 天" },
-]
 
 // The expanded row's latency window: a day, the widest in which every ping
 // remains on the chart.
@@ -93,11 +87,13 @@ function Panel({ title, children }: { title: React.ReactNode; children: React.Re
   )
 }
 
+// Tighter on a phone, so the seven windows of a year of history fit one row of
+// a 360px screen.
 function Tab({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
   return (
     <button
       onClick={onClick}
-      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+      className={`rounded-md px-1.5 py-1 text-xs transition-colors sm:px-2.5 ${
         active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
       }`}
     >
@@ -178,14 +174,15 @@ function despikeWindow(points: { ts: number }[]): number {
 // category axis ticks are selected by index, so a period the agent was offline for
 // collapses to nothing.
 function timeAxis(rows: { ts: number }[], hours: number, from = 0, to = rows.length - 1) {
+  // Explicit, or recharts places them at 05:14 and 10:22. Any that still collide
+  // are dropped by `minTickGap`.
+  const ticks = rows.length ? timeTicks(rows[from].ts, rows[to].ts) : []
   return {
     dataKey: "ts",
     type: "number" as const,
     domain: ["dataMin", "dataMax"] as const,
-    // Explicit, or recharts places them at 05:14 and 10:22. Any that still collide
-    // are dropped by `minTickGap`.
-    ticks: rows.length ? timeTicks(rows[from].ts, rows[to].ts) : undefined,
-    tickFormatter: clockFor(hours),
+    ticks,
+    tickFormatter: tickClock(ticks, hours),
     minTickGap: hours > 24 ? 72 : 40,
     ...AXIS,
   }
@@ -413,7 +410,9 @@ export function Latency({ id, className }: { id: number; className?: string }) {
   )
 }
 
-export function NodeDetail({ node }: { node: Node }) {
+/** `historyDays` is how far back the hub keeps history; every window within it is offered. */
+export function NodeDetail({ node, historyDays }: { node: Node; historyDays: number }) {
+  const ranges = useMemo(() => windows(historyDays), [historyDays])
   const [hours, setHours] = useState(6)
   const { data, failed, retry } = useHistory(node.id, hours, "metrics")
 
@@ -482,8 +481,9 @@ export function NodeDetail({ node }: { node: Node }) {
         <p className="rounded-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{node.remark}</p>
       )}
 
-      <div className="flex gap-1 border-t pt-4">
-        {RANGES.map((r) => (
+      {/* Wraps on a screen narrower than the seven windows of a year. */}
+      <div className="flex flex-wrap gap-1 border-t pt-4">
+        {ranges.map((r) => (
           <Tab key={r.hours} active={hours === r.hours} onClick={() => setHours(r.hours)}>
             {r.label}
           </Tab>
