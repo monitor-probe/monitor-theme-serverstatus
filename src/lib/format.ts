@@ -189,6 +189,8 @@ const MDHHMM = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
 })
 
+const MMDD = new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" })
+
 function clock(ms: number): string {
   return HHMM.format(ms)
 }
@@ -199,6 +201,38 @@ function clock(ms: number): string {
  */
 export function clockFor(hours: number): (ms: number) => string {
   return hours <= 24 ? clock : (ms: number) => MDHHMM.format(ms)
+}
+
+/**
+ * The label format for an axis carrying `ticks` over a window `hours` wide: the
+ * date alone once every tick is a local midnight, where "00:00" beside each
+ * would say nothing, and `clockFor` otherwise. Decided by the ticks rather than
+ * the window, as `timeTicks` places them on midnight only once its step reaches
+ * a day.
+ */
+export function tickClock(ticks: number[], hours: number): (ms: number) => string {
+  const midnight = (t: number) => new Date(t).getHours() === 0 && new Date(t).getMinutes() === 0
+  return ticks.length > 0 && ticks.every(midnight) ? (ms: number) => MMDD.format(ms) : clockFor(hours)
+}
+
+// Round chart windows, in hours: up to a week they are drawn from minute rows,
+// past it from the hub's hourly tier.
+const WINDOWS = [1, 6, 24, 168, 720, 2160]
+
+/**
+ * The chart windows offered for a hub keeping `days` of history, which `/api/me`
+ * reports as `history_days`: the round windows shorter than it, then the whole
+ * of it. A window past it would be narrowed by the hub without saying so, and
+ * drawn under a label claiming more than it holds. A round window the whole
+ * exceeds by less than a quarter is left out, as it would sit beside a tab of
+ * nearly the same width: 30 and 31 days, 90 and 92.
+ */
+export function windows(days: number): { hours: number; label: string }[] {
+  const whole = Math.max(1, Math.floor(days)) * 24
+  return [...WINDOWS.filter((h) => h * 1.25 <= whole), whole].map((hours) => ({
+    hours,
+    label: hours < 24 ? `${hours} 小时` : hours === 8760 ? "1 年" : `${hours / 24} 天`,
+  }))
 }
 
 /**
@@ -226,15 +260,38 @@ export function cpuName(name: string): string {
 // time scale's own ticks, whatever `scale` specifies. The axis is therefore given
 // the list explicitly: the smallest step from the ladder keeping the count under
 // `count`, phased on local midnight so a daily tick lands on the day even in a
-// zone offset by 30 or 45 minutes.
-const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080].map((m) => m * 60_000)
+// zone offset by 30 or 45 minutes. Past what two weeks can cover, on the first of
+// a month: months differ in length, so no fixed step lands on one.
+const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080, 20160].map((m) => m * 60_000)
+const TICK_MONTHS = [1, 2, 3, 6, 12]
 
 export function timeTicks(from: number, to: number, count = 8): number[] {
-  const step = TICK_STEPS.find((s) => (to - from) / s <= count) ?? TICK_STEPS[TICK_STEPS.length - 1]
+  const step = TICK_STEPS.find((s) => (to - from) / s <= count)
+  if (step === undefined) return monthTicks(from, to, count)
   const zone = new Date(from).getTimezoneOffset() * 60_000
   const ticks: number[] = []
-  for (let t = Math.ceil((from - zone) / step) * step + zone; t <= to; t += step) ticks.push(t)
+  for (let t = Math.ceil((from - zone) / step) * step + zone; t <= to; t += step) {
+    // Past a daylight-saving change a step of days lands an hour off midnight,
+    // so each such tick is set back on the nearest one.
+    const tick = step < 86_400_000 ? t : new Date(t + 43_200_000).setHours(0, 0, 0, 0)
+    if (tick <= to) ticks.push(tick)
+  }
   return ticks
+}
+
+// The first of every `every`th month within `[from, to]`, on months divisible
+// by `every` so a quarterly axis reads January, April, July.
+function monthTicks(from: number, to: number, count: number): number[] {
+  const start = new Date(from)
+  const every = TICK_MONTHS.find((k) => (to - from) / (k * 30 * 86_400_000) <= count) ?? 12
+  let month = start.getFullYear() * 12 + start.getMonth()
+  if (new Date(start.getFullYear(), start.getMonth(), 1).getTime() < from) month++
+  const ticks: number[] = []
+  for (month = Math.ceil(month / every) * every; ; month += every) {
+    const t = new Date(Math.floor(month / 12), month % 12, 1).getTime()
+    if (t > to) return ticks
+    ticks.push(t)
+  }
 }
 
 /**

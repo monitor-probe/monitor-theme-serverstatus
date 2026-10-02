@@ -8,7 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes } from "@/lib/api"
 import { Link, useNodeRoute } from "@/lib/route"
 
-type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean }
+// `history_days` is absent from hubs predating the hourly tier, which kept a
+// week for anonymous callers.
+type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean; history_days?: number }
 
 // Split out because recharts is most of the bundle and the list draws no chart.
 // Warmed as soon as the app starts, so the first chart opened does not wait on it.
@@ -187,7 +189,7 @@ export default function App() {
             <NodePicker nodes={sorted} selected={selected.id} />
             <div className="min-w-0">
               <Suspense fallback={<Skeleton className="h-96" />}>
-                <NodeDetail node={selected} />
+                <NodeDetail node={selected} historyDays={me.history_days ?? 7} />
               </Suspense>
             </div>
           </div>
