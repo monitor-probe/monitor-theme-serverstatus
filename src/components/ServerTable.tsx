@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type CSSProperties, type ReactNode } from "react"
+import { lazy, Suspense, useEffect, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react"
 import {
   siAlmalinux, siAlpinelinux, siArchlinux, siCentos, siDebian, siFedora, siLinux, siOpensuse, siRedhat,
   siRockylinux, siUbuntu, type SimpleIcon,
@@ -67,6 +67,25 @@ const DISTROS: [string, SimpleIcon][] = [
   ["centos", siCentos], ["rocky", siRockylinux], ["almalinux", siAlmalinux], ["red hat", siRedhat],
   ["fedora", siFedora], ["arch", siArchlinux], ["opensuse", siOpensuse],
 ]
+
+/**
+ * One choice of several, pressed while it is the one shown: the chart page's
+ * window, the list's group. Tighter on a phone, so the seven windows of a year of
+ * history fit one row of a 360px screen.
+ */
+export function Tab({ active, className, ...props }: ComponentProps<"button"> & { active: boolean }) {
+  return (
+    <button
+      aria-pressed={active}
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs whitespace-nowrap transition-colors sm:px-2.5",
+        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+        className,
+      )}
+      {...props}
+    />
+  )
+}
 
 /**
  * The distribution's logo in its brand colour. Mixed toward white on the dark
@@ -275,25 +294,33 @@ function Row({ node, index }: { node: Node; index: number }) {
 }
 
 /**
- * One card per group, each with its own header and summary, in the order the
- * operator's node order gives the groups; the ungrouped come last. A hub without
- * groups -- or one predating them -- keeps the single table it always had.
+ * Every node in one card. Once the operator has grouped any, tabs at its top left
+ * pick one group -- 全部, then each group in the order the operator's node order
+ * gives them, then 未分组 -- and the summary follows the tab. A hub without
+ * groups, or one predating them, keeps the titled table it always had.
  */
-export function ServerTables({ nodes }: { nodes: Node[] }) {
-  const groups = groupsOf(nodes)
-  if (groups.length === 0) return <ServerTable title="服务器" nodes={nodes} />
-  const ungrouped = nodes.filter((n) => !n.group)
-  return (
-    <>
-      {/* Group names are free text, so the keys carry a prefix the ungrouped
-          card's cannot share. */}
-      {groups.map((g) => <ServerTable key={`=${g}`} title={g} nodes={nodes.filter((n) => n.group === g)} />)}
-      {ungrouped.length > 0 && <ServerTable key="*" title="未分组" nodes={ungrouped} />}
-    </>
-  )
-}
+export function ServerTables({ nodes: all, group, onGroup }: {
+  nodes: Node[]
+  /** null is every node, "" the ungrouped. */
+  group: string | null
+  onGroup: (group: string | null) => void
+}) {
+  const groups = groupsOf(all)
+  const ungrouped = all.filter((n) => !n.group).length
+  const tabs = groups.length === 0 ? [] : [
+    { value: null, label: "全部", count: all.length },
+    ...groups.map((g) => ({ value: g, label: g, count: all.filter((n) => n.group === g).length })),
+    ...(ungrouped ? [{ value: "", label: "未分组", count: ungrouped }] : []),
+  ]
+  // A tab that has since emptied or been renamed -- 未分组 included -- falls back
+  // to every node rather than to an empty table, and is forgotten, so a later
+  // group of the same name does not take the page over.
+  const current = tabs.some((t) => t.value === group) ? group : null
+  useEffect(() => {
+    if (current !== group) onGroup(current)
+  }, [current, group, onGroup])
+  const nodes = current === null ? all : all.filter((n) => (n.group ?? "") === current)
 
-function ServerTable({ title, nodes }: { title: string; nodes: Node[] }) {
   const online = nodes.filter((n) => n.online && n.metrics)
   const sum = (pick: (n: Node) => number) => online.reduce((total, n) => total + pick(n), 0)
   const totalRx = nodes.reduce((total, n) => total + n.total_rx, 0)
@@ -306,8 +333,34 @@ function ServerTable({ title, nodes }: { title: string; nodes: Node[] }) {
 
   return (
     <section className="@container rounded-md border bg-card p-5 text-card-foreground shadow-sm max-md:p-2">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-baseline gap-x-3 gap-y-1 px-1 pb-3 max-md:pb-2 @max-3xl:grid-cols-1">
-        <h2 className="min-w-0 truncate text-lg font-semibold max-md:text-sm" title={title}>{title}</h2>
+      {/* With tabs the summary moves to the right, leaving them the rest of the
+          row: centred, it would confine them to the left third. */}
+      <div
+        className={cn(
+          "grid items-baseline gap-x-3 gap-y-1 px-1 pb-3 max-md:pb-2 @max-3xl:grid-cols-1",
+          tabs.length ? "grid-cols-[1fr_auto]" : "grid-cols-[1fr_auto_1fr]",
+        )}
+      >
+        {tabs.length === 0 ? (
+          <h2 className="min-w-0 truncate text-lg font-semibold max-md:text-sm">服务器</h2>
+        ) : (
+          // Wrapped rather than scrolled, so every group stays in sight.
+          <div role="group" aria-label="分组" className="flex min-w-0 flex-wrap gap-1">
+            {tabs.map((t) => (
+              <Tab
+                // Group names are free text, so they carry a prefix no key of
+                // the 全部 tab can share.
+                key={t.value === null ? "*" : `=${t.value}`}
+                active={current === t.value}
+                onClick={() => onGroup(t.value)}
+                className="text-sm max-md:text-xs"
+              >
+                {t.label}
+                <span className="tabular-nums">{t.count}</span>
+              </Tab>
+            ))}
+          </div>
+        )}
         <div className="tabular-nums flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground max-md:text-[10px]">
           <span className="whitespace-nowrap">
             在线 {nodes.filter((n) => n.online).length} / {nodes.length} · ↓ {compact(sum((n) => n.metrics!.net_rx))}/s · ↑{" "}

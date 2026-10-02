@@ -5,7 +5,7 @@ import {
 } from "recharts"
 
 import { Skeleton } from "@/components/ui/skeleton"
-import { deployed, Dot, Flag } from "@/components/ServerTable"
+import { deployed, Dot, Flag, Tab } from "@/components/ServerTable"
 import { api, type Node } from "@/lib/api"
 import {
   axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime,
@@ -92,21 +92,6 @@ function Panel({ title, children }: { title: React.ReactNode; children: React.Re
       <h4 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h4>
       <div className="h-40 w-full text-muted-foreground">{children}</div>
     </div>
-  )
-}
-
-// Tighter on a phone, so the seven windows of a year of history fit one row of
-// a 360px screen.
-function Tab({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-md px-1.5 py-1 text-xs transition-colors sm:px-2.5 ${
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-      }`}
-    >
-      {children}
-    </button>
   )
 }
 
