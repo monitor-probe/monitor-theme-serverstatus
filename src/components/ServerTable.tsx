@@ -299,17 +299,17 @@ function Row({ node, index }: { node: Node; index: number }) {
  * gives them, then 未分组 -- and the summary follows the tab. A hub without
  * groups, or one predating them, keeps the titled table it always had.
  */
-export function ServerTables({ nodes: all, group, onGroup }: {
+export function ServerTable({ nodes, group, onGroup }: {
   nodes: Node[]
   /** null is every node, "" the ungrouped. */
   group: string | null
   onGroup: (group: string | null) => void
 }) {
-  const groups = groupsOf(all)
-  const ungrouped = all.filter((n) => !n.group).length
+  const groups = groupsOf(nodes)
+  const ungrouped = nodes.filter((n) => !n.group).length
   const tabs = groups.length === 0 ? [] : [
-    { value: null, label: "全部", count: all.length },
-    ...groups.map((g) => ({ value: g, label: g, count: all.filter((n) => n.group === g).length })),
+    { value: null, label: "全部", count: nodes.length },
+    ...groups.map((g) => ({ value: g, label: g, count: nodes.filter((n) => n.group === g).length })),
     ...(ungrouped ? [{ value: "", label: "未分组", count: ungrouped }] : []),
   ]
   // A tab that has since emptied or been renamed -- 未分组 included -- falls back
@@ -319,12 +319,12 @@ export function ServerTables({ nodes: all, group, onGroup }: {
   useEffect(() => {
     if (current !== group) onGroup(current)
   }, [current, group, onGroup])
-  const nodes = current === null ? all : all.filter((n) => (n.group ?? "") === current)
+  const shown = current === null ? nodes : nodes.filter((n) => (n.group ?? "") === current)
 
-  const online = nodes.filter((n) => n.online && n.metrics)
+  const online = shown.filter((n) => n.online && n.metrics)
   const sum = (pick: (n: Node) => number) => online.reduce((total, n) => total + pick(n), 0)
-  const totalRx = nodes.reduce((total, n) => total + n.total_rx, 0)
-  const totalTx = nodes.reduce((total, n) => total + n.total_tx, 0)
+  const totalRx = shown.reduce((total, n) => total + n.total_rx, 0)
+  const totalTx = shown.reduce((total, n) => total + n.total_tx, 0)
   const heads: [keyof typeof COL, ReactNode][] = [
     ["status", "状态"], ["name", "名称"], ["location", "位置"], ["os", "系统"], ["uptime", "在线"],
     ["expiry", "到期"], ["load", "负载"], ["speed", "网速 ↓|↑"],
@@ -344,8 +344,10 @@ export function ServerTables({ nodes: all, group, onGroup }: {
         {tabs.length === 0 ? (
           <h2 className="min-w-0 truncate text-lg font-semibold max-md:text-sm">服务器</h2>
         ) : (
-          // Wrapped rather than scrolled, so every group stays in sight.
+          // Wrapped rather than scrolled, so every group stays in sight. The
+          // heading stays for a screen reader, which moves between headings.
           <div role="group" aria-label="分组" className="flex min-w-0 flex-wrap gap-1">
+            <h2 className="sr-only">服务器</h2>
             {tabs.map((t) => (
               <Tab
                 // Group names are free text, so they carry a prefix no key of
@@ -363,7 +365,7 @@ export function ServerTables({ nodes: all, group, onGroup }: {
         )}
         <div className="tabular-nums flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground max-md:text-[10px]">
           <span className="whitespace-nowrap">
-            在线 {nodes.filter((n) => n.online).length} / {nodes.length} · ↓ {compact(sum((n) => n.metrics!.net_rx))}/s · ↑{" "}
+            在线 {shown.filter((n) => n.online).length} / {shown.length} · ↓ {compact(sum((n) => n.metrics!.net_rx))}/s · ↑{" "}
             {compact(sum((n) => n.metrics!.net_tx))}/s
           </span>
           <span className="whitespace-nowrap" title="所列节点累计下载与上传流量">总流量 ↓ {bytes(totalRx)} · ↑ {bytes(totalTx)}</span>
@@ -381,7 +383,7 @@ export function ServerTables({ nodes: all, group, onGroup }: {
         </TableHeader>
         {/* Rules between rows rather than under them, as the header row starts. */}
         <TableBody className="[&_td]:h-[29px] [&_td]:border-t [&_td]:px-1.5 [&_td]:py-1 @max-3xl:[&_td]:px-0.5">
-          {nodes.map((n, i) => (
+          {shown.map((n, i) => (
             <Row key={n.id} node={n} index={i} />
           ))}
         </TableBody>
