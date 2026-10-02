@@ -61,7 +61,12 @@ const SERIES = { dot: false as const, strokeWidth: 1.5, isAnimationActive: false
 // One width for every stacked panel's value axis. Sized to their own labels --
 // 40px under "100%", 68px under "172 MB" -- the four plot areas would be offset by
 // 28px, placing a CPU spike and the network spike that caused it at different x.
-const Y_WIDTH = 68
+//
+// Every listed tick is drawn: the lists are spaced to fit, while recharts' own
+// collision pass would nudge the top label inward, drop the tick beneath it, and
+// thin the gridlines separately -- the CPU axis would lose its 30% gridline, and
+// a rate axis of 1 KB/s to 100 MB/s its 10 MB/s label and two gridlines.
+const VALUE_AXIS = { ...AXIS, width: 68, interval: 0 }
 
 // Hue alone separates the probes. A dash pattern would not: once every ping in a
 // day is on the chart its period is shorter than the jitter, and dotted and dashed
@@ -503,7 +508,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...timeAxis(metricRows, hours)} />
-                <YAxis {...axes.cpu} unit="%" width={Y_WIDTH} {...AXIS} />
+                <YAxis {...axes.cpu} unit="%" {...VALUE_AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   formatter={(v) => [`${Number(v).toFixed(1)}%`, "CPU"]}
@@ -524,7 +529,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...timeAxis(metricRows, hours)} />
-                <YAxis domain={[0, node.mem_total]} ticks={quarters(node.mem_total)} tickFormatter={axisBytes} width={Y_WIDTH} {...AXIS} />
+                <YAxis domain={[0, node.mem_total]} ticks={quarters(node.mem_total)} tickFormatter={axisBytes} {...VALUE_AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   formatter={(v) => bytes(Number(v))}
@@ -537,10 +542,10 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
 
           {/* A rate has no total to be a fraction of, and its range spans orders
               of magnitude: a week of one node runs from 0.2 KB/s idle to bursts
-              of 70 MB/s. Fitted to the bursts, a linear axis drew the median
-              minute less than a pixel above the floor on seven of nine nodes
-              at the day window, so this one is logarithmic, each tenfold step
-              the same height.
+              of 70 MB/s. Fitted to the bursts, a linear axis would draw the
+              median minute less than a pixel above the floor on seven of nine
+              nodes at the day window, so this one is logarithmic, each tenfold
+              step the same height.
 
               The line is the bucket's mean, so it integrates to the traffic
               totals, and a 15-second speed test averaged over its minute draws
@@ -567,7 +572,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               <ComposedChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...timeAxis(metricRows, hours)} />
-                <YAxis scale="log" {...axes.rate} tickFormatter={axisBytes} unit="/s" width={Y_WIDTH} {...AXIS} />
+                <YAxis scale="log" {...axes.rate} tickFormatter={axisBytes} unit="/s" {...VALUE_AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   // The hub's figures rather than `v`, which is lifted to the
@@ -610,7 +615,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                 <XAxis {...timeAxis(metricRows, hours)} />
-                <YAxis domain={[0, node.disk_total]} ticks={quarters(node.disk_total)} tickFormatter={axisBytes} width={Y_WIDTH} {...AXIS} />
+                <YAxis domain={[0, node.disk_total]} ticks={quarters(node.disk_total)} tickFormatter={axisBytes} {...VALUE_AXIS} />
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   formatter={(v) => bytes(Number(v))}

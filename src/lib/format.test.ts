@@ -46,13 +46,15 @@ eq(axisTop(200, 4, 100), 100, "百分比封顶")
 eq(quarters(32 * 1024 ** 2).map(axisBytes), ["0 B", "8 MB", "16 MB", "24 MB", "32 MB"], "四条网格线都是整值")
 
 // rateAxis: from the rung at or below the slowest rate to the rung at or above
-// the highest peak, every label round, at most five of them.
+// the highest peak, every label round, at most six of them.
 const axis = (low: number, high: number) => {
   const { domain, ticks } = rateAxis(low, high)
   return [domain.map(axisBytes), ticks.map(axisBytes)]
 }
-eq(axis(209, 70 * 1024 ** 2), [["1 KB", "100 MB"], ["10 KB", "1 MB", "100 MB"]], "空闲 209 B/s 落在底上，突发 70 MB/s")
-eq(axis(744, 229 * 1024 ** 2), [["1 KB", "1 GB"], ["1 KB", "100 KB", "10 MB", "1 GB"]], "七档只标四个，从顶往下数")
+eq(axis(209, 70 * 1024 ** 2), [["1 KB", "100 MB"], ["1 KB", "10 KB", "100 KB", "1 MB", "10 MB", "100 MB"]],
+   "空闲 209 B/s 落在标了的底上，突发 70 MB/s")
+eq(axis(744, 229 * 1024 ** 2), [["1 KB", "1 GB"], ["1 KB", "100 KB", "10 MB", "1 GB"]], "七档隔一档标")
+eq(axis(300, 1.5 * 1024 ** 3), [["1 KB", "10 GB"], ["10 KB", "1 MB", "100 MB", "10 GB"]], "八档从顶往下数")
 eq(axis(5 * 1024 ** 2, 80 * 1024 ** 2), [["1 MB", "100 MB"], ["1 MB", "10 MB", "100 MB"]], "底随最慢的速率上移")
 eq(axis(1100, 5100), [["1 KB", "10 KB"], ["1 KB", "10 KB"]], "不到一档时也有一档")
 eq(axis(1024, 1024), [["1 KB", "10 KB"], ["1 KB", "10 KB"]], "正好落在档上")

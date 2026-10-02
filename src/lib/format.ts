@@ -351,16 +351,18 @@ export const RATE_FLOOR = rung(FLOOR)
  * A logarithmic axis for transfer rates, from the rung at or below `low` to the
  * rung at or above `high`, and no lower than `RATE_FLOOR`.
  *
- * At most five labels, counted down from the top, which is the one that says how
- * far the axis reaches: 1 KB/s to 1 GB/s is seven rungs, and on a panel 120 px
- * tall a label on each would sit 20 px from the next.
+ * At most six labels, counted down from the top, which is the one that says how
+ * far the axis reaches. Six label every rung from the floor to 100 MB/s, the
+ * bursts of a gigabit port, so an idle line lies on a labelled gridline; on a
+ * panel 120 px tall they sit 24 px apart. Wider spans take every other rung:
+ * 1 KB/s to 1 GB/s is seven, and a label on each would sit 20 px from the next.
  */
 export function rateAxis(low: number, high: number): { domain: [number, number]; ticks: number[] } {
   let bottom = FLOOR
   while (rung(bottom + 1) <= Math.min(low, high)) bottom++
   let top = bottom + 1
   while (rung(top) < high) top++
-  const step = Math.ceil((top - bottom) / 4)
+  const step = Math.ceil((top - bottom) / 5)
   const ticks: number[] = []
   for (let i = top; i >= bottom; i -= step) ticks.unshift(rung(i))
   return { domain: [rung(bottom), rung(top)], ticks }
