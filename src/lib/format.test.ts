@@ -5,7 +5,7 @@
 // Nothing imports it, so the bundle never includes it.
 import {
   axisBytes, axisTop, bytes, compact, cpuName, cycle, daysUntil, despike, distro, duration, expiresIn, money, monthUsage,
-  osName, pair, quarters, tickClock, timeTicks, uptime, windows,
+  osName, pair, quarters, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime, windows,
 } from "./format.ts"
 
 let failed = 0
@@ -39,30 +39,28 @@ eq(axisBytes(2 * 1024 ** 3), "2 GB", "整数刻度不写 .0")
 eq(axisBytes(0), "0 B", "零刻度")
 
 // axisTop: the top is derived from a round gridline, so quarters() lands on round
-// values in the unit the axis is printed in.
-eq(axisTop(0.4, 4, 10, 100), 4, "闲置机器拿到地板值")
-eq(axisTop(63, 4, 10, 100), 80, "63% -> 0/20/40/60/80")
-eq(axisTop(200, 4, 10, 100), 100, "百分比封顶")
-eq(axisTop(25_000_000, 1024, 1024), 32 * 1024 ** 2, "字节轴按 1024 取整")
+// values.
+eq(axisTop(0.4, 4, 100), 4, "闲置机器拿到地板值")
+eq(axisTop(63, 4, 100), 80, "63% -> 0/20/40/60/80")
+eq(axisTop(200, 4, 100), 100, "百分比封顶")
 eq(quarters(32 * 1024 ** 2).map(axisBytes), ["0 B", "8 MB", "16 MB", "24 MB", "32 MB"], "四条网格线都是整值")
-// 四条刻度为 step·[1,2,3,4]，约束落在第三条：3m 必须能被 axisBytes 精确打印，
-// 而它只保留一位小数。2 的幂均满足；半档 384 与 768 不满足，其第三条刻度为
-// 1.125 Ki 与 2.25 Ki，将被打印为 "1.1" 与 "2.3"。这两档恰好覆盖 1–1.5 MB/s
-// 与 2–3 MB/s。断言针对标签本身，仅比较轴顶比例无法发现该问题。
-eq(quarters(axisTop(2_621_440, 1024, 1024)).map(axisBytes),
-   ["0 B", "1 MB", "2 MB", "3 MB", "4 MB"], "峰值 2.5 MB/s 的四条刻度")
-eq(quarters(axisTop(1_258_291, 1024, 1024)).map(axisBytes),
-   ["0 B", "512 KB", "1 MB", "1.5 MB", "2 MB"], "峰值 1.2 MB/s 的四条刻度")
-// 轴顶必须取自梯子而非数据本身。十进制梯子配合 1024 进制的 scale 最大仅到
-// 10·1024^k，越过该档后 find 落空，`?? target` 将轴顶回退为 max，网格线随之变为
-// max/4 这类非整值，正是本函数要避免的情形。该回退仅在 [4,40)·1024^k 的窄带内
-// 不出问题，而 40 KB/s–4 MB/s 恰是 VPS 最常见的区间。
-for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
-  const top = axisTop(max, 1024, 1024)
-  eq(top > max, true, `${max} B/s 的轴顶不能等于数据本身`)
-  // 上界为 2 而非 1.5：梯子移除半档后，最坏情况是下一档 2 的幂。
-  eq(top / max < 2, true, `${max} B/s 的轴顶不能浪费整块面板`)
+
+// rateAxis: from the rung at or below the slowest rate to the rung at or above
+// the highest peak, every label round, at most six of them.
+const axis = (low: number, high: number) => {
+  const { domain, ticks } = rateAxis(low, high)
+  return [domain.map(axisBytes), ticks.map(axisBytes)]
 }
+eq(axis(209, 70 * 1024 ** 2), [["1 KB", "100 MB"], ["1 KB", "10 KB", "100 KB", "1 MB", "10 MB", "100 MB"]],
+   "空闲 209 B/s 落在标了的底上，突发 70 MB/s")
+eq(axis(744, 229 * 1024 ** 2), [["1 KB", "1 GB"], ["1 KB", "100 KB", "10 MB", "1 GB"]], "七档隔一档标")
+eq(axis(300, 1.5 * 1024 ** 3), [["1 KB", "10 GB"], ["10 KB", "1 MB", "100 MB", "10 GB"]], "八档从顶往下数")
+eq(axis(5 * 1024 ** 2, 80 * 1024 ** 2), [["1 MB", "100 MB"], ["1 MB", "10 MB", "100 MB"]], "底随最慢的速率上移")
+eq(axis(1100, 5100), [["1 KB", "10 KB"], ["1 KB", "10 KB"]], "不到一档时也有一档")
+eq(axis(1024, 1024), [["1 KB", "10 KB"], ["1 KB", "10 KB"]], "正好落在档上")
+eq(axis(0, 0), [["1 KB", "10 KB"], ["1 KB", "10 KB"]], "全是零")
+eq(axis(Infinity, 0), [["1 KB", "10 KB"], ["1 KB", "10 KB"]], "空窗口：最小值的初值是 Infinity")
+eq(RATE_FLOOR, 1024, "底是 1 KB/s")
 
 // timeTicks: round clock values, phased on local midnight rather than the epoch,
 // and never more than requested.
