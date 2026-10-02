@@ -20,9 +20,13 @@ export function useNodeRoute() {
   return id
 }
 
-/** Announced as a popstate, so every `useNodeRoute` hears it the way it hears back. */
+/**
+ * Announced as a popstate, so every `useNodeRoute` hears it the way it hears back.
+ * A link to the page already shown adds no entry, or each click on it would cost
+ * one more press of back.
+ */
 function navigate(href: string) {
-  history.pushState({}, "", href)
+  if (location.pathname + location.search + location.hash !== href) history.pushState({}, "", href)
   dispatchEvent(new PopStateEvent("popstate"))
   scrollTo(0, 0)
 }

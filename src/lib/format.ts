@@ -7,9 +7,8 @@ const unitOf = (n: number) => Math.min(Math.floor(Math.log(n) / Math.log(1024)),
  * `df -h` and hosting plans write them: no plan is sold as "1000 GiB", and the two
  * extra letters push the memory and traffic lines past their column.
  *
- * Three significant digits by default. Two decimals throughout would end the
- * card's lines in an ellipsis on a four-column grid; a pair sharing a unit
- * recovers them through pair() below.
+ * Three significant digits by default; a pair sharing a unit gets two decimals
+ * through pair() below.
  */
 export function bytes(n: number, digits?: number): string {
   // `< 1` rather than `< 0`: a fraction of a byte puts `unitOf` at -1 and prints
@@ -21,10 +20,10 @@ export function bytes(n: number, digits?: number): string {
 }
 
 /**
- * A "used / total" pair. Sharing a unit means writing it once, and those four
- * characters are what allow the two decimals: 111px against the 122px a card in
- * the four-column grid provides, where separate units require 132px. A pair
- * spanning two units has nothing to save and falls back to bytes().
+ * A "used / total" pair. Sharing a unit means writing it once, and the
+ * characters saved go to two decimals: "1.23 / 3.82 GB" rather than
+ * "1.23 GB / 3.82 GB". A pair spanning two units has nothing to save and falls
+ * back to bytes().
  */
 export function pair(used: number, total: number): string {
   if (used > 0 && total > 0 && unitOf(used) === unitOf(total)) {
@@ -43,8 +42,7 @@ export function pair(used: number, total: number): string {
  */
 export function axisBytes(v: number): string {
   if (!v || v < 0) return "0 B"
-  const unit = Math.min(Math.floor(Math.log(v) / Math.log(1024)), 5)
-  return bytes(v, v / 1024 ** unit >= 100 ? 0 : 1).replace(".0 ", " ")
+  return bytes(v, v / 1024 ** unitOf(v) >= 100 ? 0 : 1).replace(".0 ", " ")
 }
 
 export function rate(n: number): string {
@@ -64,7 +62,7 @@ export function compact(n: number): string {
 
 /** Distribution and major version only: "Debian GNU/Linux 13 (trixie)" is "Debian 13". */
 export function distro(os: string): string {
-  const name = os.trim().split(/\s+/)[0] ?? ""
+  const name = os.trim().split(/\s+/)[0]
   const version = os.match(/\d+(?:\.\d+)?/)?.[0]
   return version ? `${name} ${version}` : name
 }
@@ -96,8 +94,9 @@ export function monthUsage(node: { month_rx: number; month_tx: number; month_use
   }
 }
 
+/** Not capped: traffic past its quota reads as 212%, while the bar stops full. */
 export function percent(used: number, total: number): number {
-  return total > 0 ? Math.min(100, (used / total) * 100) : 0
+  return total > 0 ? (used / total) * 100 : 0
 }
 
 export function uptime(seconds: number): string {
@@ -171,15 +170,14 @@ export function cycle(billing: string): string {
   return CYCLE_WORDS[months] ?? (months % 12 ? `${months} 个月付` : `${months / 12} 年付`)
 }
 
-// Hoisted out of `clock`: recharts calls a tickFormatter for every sample when
-// laying out an axis rather than once per tick drawn, and constructing an Intl
-// formatter per call was the largest single cost on the detail page -- 348 ms of
-// a 1531 ms click-to-chart. The zone now resolves once, which only an OS timezone
-// change under an open tab would notice.
+// Built once: recharts calls a tickFormatter for every sample when laying out an
+// axis rather than once per tick drawn, and an Intl formatter constructed per call
+// would be the largest single cost on the detail page -- 348 ms of a 1531 ms
+// click-to-chart. The zone resolves once, which only an OS timezone change under
+// an open tab would notice.
 //
-// Both take epoch milliseconds, which is what the charts feed their time axis:
-// recharts passes `scale="time"` to a d3 time scale, and a scale given seconds
-// reads 1.79e9 as three weeks past the epoch. The hub answers in seconds.
+// They take epoch milliseconds, as Date does. The hub answers in seconds, which
+// the charts convert as the rows arrive.
 const HHMM = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" })
 
 const MDHHMM = new Intl.DateTimeFormat("zh-CN", {
@@ -191,16 +189,12 @@ const MDHHMM = new Intl.DateTimeFormat("zh-CN", {
 
 const MMDD = new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" })
 
-function clock(ms: number): string {
-  return HHMM.format(ms)
-}
-
 /**
  * Axis ticks for a window `hours` wide. Beyond a day a bare "14:00" recurs each
  * midnight and the axis no longer indicates which day it refers to.
  */
 export function clockFor(hours: number): (ms: number) => string {
-  return hours <= 24 ? clock : (ms: number) => MDHHMM.format(ms)
+  return hours <= 24 ? HHMM.format : MDHHMM.format
 }
 
 /**
@@ -212,7 +206,7 @@ export function clockFor(hours: number): (ms: number) => string {
  */
 export function tickClock(ticks: number[], hours: number): (ms: number) => string {
   const midnight = (t: number) => new Date(t).getHours() === 0 && new Date(t).getMinutes() === 0
-  return ticks.length > 0 && ticks.every(midnight) ? (ms: number) => MMDD.format(ms) : clockFor(hours)
+  return ticks.length > 0 && ticks.every(midnight) ? MMDD.format : clockFor(hours)
 }
 
 // Round chart windows, in hours: up to a week they are drawn from minute rows,
@@ -307,14 +301,13 @@ function monthTicks(from: number, to: number, count: number): number[] {
  * exceeds 0.4% CPU would get an axis of 0-0.4 and render every scheduler blip as
  * a peak.
  */
-export function axisTop(max: number, floor: number, cap = Infinity): number {
+export function axisTop(max: number, floor: number, cap: number): number {
   const target = Math.min(cap, Math.max(max, floor)) / 4
   const scale = 10 ** Math.floor(Math.log10(target))
-  const step = LADDER.map((m) => m * scale).find((n) => n >= target)
-  return Math.min(cap, (step ?? target) * 4)
+  return Math.min(cap, LADDER.find((m) => m * scale >= target)! * scale * 4)
 }
 
-/** Round multipliers within a decade. */
+/** Round multipliers spanning a decade, so `axisTop` always finds one. */
 const LADDER = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]
 
 /**
@@ -327,6 +320,23 @@ const LADDER = [1, 1.5, 2, 2.5, 3, 4, 5, 7.5, 10]
  */
 export function quarters(top: number): number[] {
   return [0, 0.25, 0.5, 0.75, 1].map((f) => top * f)
+}
+
+/**
+ * `rows` with an empty row in each gap over twice their usual spacing, where a
+ * chart breaks its line rather than drawing a straight one across a stretch with
+ * no samples -- a day offline would read as a day of steady load. The usual
+ * spacing is the median gap rather than the hub's bucket: an agent reporting
+ * every few minutes leaves a row only every few buckets.
+ */
+export function withGaps<T extends { ts: number }>(rows: T[]): (T | { ts: number })[] {
+  const gaps = rows.slice(1).map((r, i) => r.ts - rows[i].ts).sort((a, b) => a - b)
+  // The lower median: of two gaps, the shorter is the spacing and the longer
+  // the one in question.
+  const usual = gaps[(gaps.length - 1) >> 1]
+  return rows.flatMap((r, i) =>
+    i > 0 && r.ts - rows[i - 1].ts > 2 * usual ? [{ ts: (r.ts + rows[i - 1].ts) / 2 }, r] : [r],
+  )
 }
 
 /**

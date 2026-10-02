@@ -11,7 +11,7 @@ const VARIANTS = {
   ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
 }
 
-const SIZES = { default: "h-9 px-4 py-2 has-[>svg]:px-3", icon: "size-9" }
+const SIZES = { default: "h-9 px-4 py-2", icon: "size-9" }
 
 function Button({
   className,
@@ -23,7 +23,7 @@ function Button({
     <button
       data-slot="button"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         VARIANTS[variant],
         SIZES[size],
         className,

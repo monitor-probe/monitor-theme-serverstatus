@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   Area, AreaChart, Brush, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
+  Tooltip, XAxis, YAxis, type DotItemDotProps,
 } from "recharts"
 
 import { Skeleton } from "@/components/ui/skeleton"
@@ -9,7 +9,7 @@ import { deployed, Dot, Flag } from "@/components/ServerTable"
 import { api, type Node } from "@/lib/api"
 import {
   axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime,
-  windows,
+  windows, withGaps,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -58,6 +58,17 @@ const AXIS = { stroke: "currentColor", fontSize: 11, tickLine: false, axisLine: 
 // chart across seven hundred points per probe.
 const SERIES = { dot: false as const, strokeWidth: 1.5, isAnimationActive: false }
 
+// A resource chart's series. A row with a gap on either side has no neighbour to
+// draw a line to, so it is marked with a dot; without one, a node back for a
+// single bucket after a stretch offline would not show at all.
+const RESOURCE_SERIES = {
+  ...SERIES,
+  dot: ({ cx, cy, index, points, stroke }: DotItemDotProps) =>
+    cy == null || points[index - 1]?.y != null || points[index + 1]?.y != null ? null : (
+      <circle cx={cx} cy={cy} r={2} fill={stroke} />
+    ),
+}
+
 // One width for every stacked panel's value axis. Sized to their own labels --
 // 40px under "100%", 68px under "172 MB" -- the four plot areas would be offset by
 // 28px, placing a CPU spike and the network spike that caused it at different x.
@@ -73,14 +84,17 @@ const VALUE_AXIS = { ...AXIS, width: 68, interval: 0 }
 // lines both read as texture.
 const PALETTE = [1, 2, 3, 4, 5].map((i) => `var(--color-chart-${i})`)
 
-// recharts paints its tooltip white unless told otherwise, which is a white box
-// on the dark theme.
-const TIP = {
-  fontSize: 12,
-  background: "var(--color-popover)",
-  color: "var(--color-popover-foreground)",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
+// Shared by every chart's tooltip. recharts paints it white unless told
+// otherwise, which is a white box on the dark theme.
+const TOOLTIP = {
+  labelFormatter: (ts: unknown) => new Date(Number(ts)).toLocaleString("zh-CN"),
+  contentStyle: {
+    fontSize: 12,
+    background: "var(--color-popover)",
+    color: "var(--color-popover-foreground)",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius)",
+  },
 }
 
 function Panel({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
@@ -135,8 +149,8 @@ function useHistory(id: number, hours: number, series: "metrics" | "ping") {
     // approximate figure suffices, and the viewport is known before layout. A
     // rotation keeps whatever it fetched with.
     //
-    // Only the half on screen is requested; the other accounted for a third to two
-    // thirds of every response and was never drawn.
+    // Only the series on screen is requested; the other would make up a third to
+    // two thirds of every response and never be drawn.
     const points = Math.round(globalThis.innerWidth * (globalThis.devicePixelRatio || 1))
     api<History>(`/nodes/${id}/metrics?hours=${hours}&points=${points}&series=${series}`)
       .then((next) => { if (active) setData(next) })
@@ -270,9 +284,10 @@ export function Latency({ id, className }: { id: number; className?: string }) {
         row[`t${s.id}`] = p.latency
         row[`s${s.id}`] = line[i]
         row[`l${s.id}`] = p.loss ?? 0
-        // A bucket with a single answer carries no band and spans only that answer. Left null, `connectNulls`
-        // would bridge the hours between the few buckets that have one: 9 of
-        // 1,438 in a day, the widest gap 268 minutes, drawn as one large wedge.
+        // A bucket with a single answer carries no band and spans only that
+        // answer. Left null, `connectNulls` would bridge the hours between the
+        // few buckets that have one: 9 of 1,438 in a day, the widest gap 268
+        // minutes, drawn as one large wedge.
         row[`b${s.id}`] = p.band ?? (p.latency === null ? null : [p.latency, p.latency])
         // Taken as the span of three filtered series rather than a pair: the two
         // edges are filtered independently, so a bucket that answered slightly
@@ -349,10 +364,10 @@ export function Latency({ id, className }: { id: number; className?: string }) {
                   it, and zero flattens every wobble. */}
               <YAxis unit="ms" width={52} domain={["auto", "auto"]} {...AXIS} />
               <Tooltip
-                labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                {...TOOLTIP}
                 // The line is drawn from what answered, so without this a bucket
                 // that lost most of its packets reads as normal. `dataKey` is
-                // `t7`; the loss sits at `l7`.
+                // `t7`, or `s7` with spikes clipped; the loss sits at `l7`.
                 //
                 // Rounded because a clipped sample carries the median of an even
                 // window, which falls between two of the whole milliseconds the
@@ -361,7 +376,6 @@ export function Latency({ id, className }: { id: number; className?: string }) {
                   const loss = Number(item?.payload?.[`l${String(item.dataKey).slice(1)}`] ?? 0)
                   return [`${Math.round(Number(v))} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
                 }}
-                contentStyle={TIP}
               />
               {/* Behind the line, the range that bucket's answers spanned --
                   Smokeping's "smoke". At the day window a bucket moves 63 ms at
@@ -440,6 +454,9 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
       tx_band: [lift(m.net_tx), lift(m.net_tx_max ?? m.net_tx)],
     }))
   }, [data])
+  // What the four panels draw: the rows above, broken where the node was silent.
+  // The axes are fitted to the rows alone.
+  const chartRows = useMemo(() => withGaps(metricRows), [metricRows])
   // The window's highest rate each way, or null from a hub that sends no peak:
   // a maximum of the means would be labelled a peak it is not.
   const peak = useMemo(() => {
@@ -469,6 +486,9 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
       ),
     }
   }, [metricRows])
+  // Held across the live pushes that re-render this page, or each would hand
+  // the four axes a new formatter and lay them out again.
+  const xAxis = useMemo(() => timeAxis(chartRows, hours), [chartRows, hours])
 
   return (
     <div className="space-y-4">
@@ -476,7 +496,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
         <Dot node={node} />
         <h2 className="truncate text-lg font-semibold">{node.name}</h2>
         <Flag code={node.country} className="text-sm" />
-        <span className="tnum text-xs text-muted-foreground">
+        <span className="tabular-nums text-xs text-muted-foreground">
           {node.online ? `在线 ${m ? uptime(m.uptime) : ""}` : deployed(node) ? `离线 ${away >= 60 ? uptime(away) : ""}` : "未接入"}
         </span>
         {node.agent_version && <span className="text-xs text-muted-foreground">agent {node.agent_version}</span>}
@@ -505,16 +525,15 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
         <div className="space-y-5">
           <Panel title="CPU">
             <ResponsiveContainer>
-              <AreaChart data={metricRows}>
+              <AreaChart data={chartRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows, hours)} />
+                <XAxis {...xAxis} />
                 <YAxis {...axes.cpu} unit="%" {...VALUE_AXIS} />
                 <Tooltip
-                  labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                  {...TOOLTIP}
                   formatter={(v) => [`${Number(v).toFixed(1)}%`, "CPU"]}
-                  contentStyle={TIP}
                 />
-                <Area dataKey="cpu" stroke="var(--color-chart-1)" fill="var(--color-chart-1)" fillOpacity={0.15} {...SERIES} />
+                <Area dataKey="cpu" stroke="var(--color-chart-1)" fill="var(--color-chart-1)" fillOpacity={0.15} {...RESOURCE_SERIES} />
               </AreaChart>
             </ResponsiveContainer>
           </Panel>
@@ -526,16 +545,15 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               title because the axis top is claiming it. */}
           <Panel title={`内存 · ${bytes(node.mem_total)}`}>
             <ResponsiveContainer>
-              <AreaChart data={metricRows}>
+              <AreaChart data={chartRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows, hours)} />
+                <XAxis {...xAxis} />
                 <YAxis domain={[0, node.mem_total]} ticks={quarters(node.mem_total)} tickFormatter={axisBytes} {...VALUE_AXIS} />
                 <Tooltip
-                  labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                  {...TOOLTIP}
                   formatter={(v) => bytes(Number(v))}
-                  contentStyle={TIP}
                 />
-                <Area dataKey="mem_used" name="内存" stroke="var(--color-chart-4)" fill="var(--color-chart-4)" fillOpacity={0.15} {...SERIES} />
+                <Area dataKey="mem_used" name="内存" stroke="var(--color-chart-4)" fill="var(--color-chart-4)" fillOpacity={0.15} {...RESOURCE_SERIES} />
               </AreaChart>
             </ResponsiveContainer>
           </Panel>
@@ -560,21 +578,21 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               <>
                 网络速率
                 <span className="ml-3 whitespace-nowrap text-chart-2">
-                  ● 下行{peak && <span className="tnum text-muted-foreground"> 峰值 {rate(peak.rx)}</span>}
+                  ● 下行{peak && <span className="tabular-nums text-muted-foreground"> 峰值 {rate(peak.rx)}</span>}
                 </span>
                 <span className="ml-2 whitespace-nowrap text-chart-3">
-                  ● 上行{peak && <span className="tnum text-muted-foreground"> 峰值 {rate(peak.tx)}</span>}
+                  ● 上行{peak && <span className="tabular-nums text-muted-foreground"> 峰值 {rate(peak.tx)}</span>}
                 </span>
               </>
             }
           >
             <ResponsiveContainer>
-              <ComposedChart data={metricRows}>
+              <ComposedChart data={chartRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows, hours)} />
+                <XAxis {...xAxis} />
                 <YAxis scale="log" {...axes.rate} tickFormatter={axisBytes} unit="/s" {...VALUE_AXIS} />
                 <Tooltip
-                  labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                  {...TOOLTIP}
                   // The hub's figures rather than `v`, which is lifted to the
                   // axis floor.
                   formatter={(_, name, item) => {
@@ -582,7 +600,6 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                     const top = item?.payload?.[`net_${item.dataKey}_max`]
                     return [top === undefined ? rate(mean) : `均值 ${rate(mean)} · 峰值 ${rate(top)}`, name]
                   }}
-                  contentStyle={TIP}
                 />
                 {[
                   { key: "rx", stroke: "var(--color-chart-2)" },
@@ -601,8 +618,8 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                     legendType="none"
                   />
                 ))}
-                <Line dataKey="rx" name="下行" stroke="var(--color-chart-2)" {...SERIES} />
-                <Line dataKey="tx" name="上行" stroke="var(--color-chart-3)" {...SERIES} />
+                <Line dataKey="rx" name="下行" stroke="var(--color-chart-2)" {...RESOURCE_SERIES} />
+                <Line dataKey="tx" name="上行" stroke="var(--color-chart-3)" {...RESOURCE_SERIES} />
               </ComposedChart>
             </ResponsiveContainer>
           </Panel>
@@ -612,16 +629,15 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               axis tracks the window's own maximum. */}
           <Panel title={`硬盘 · ${bytes(node.disk_total)}`}>
             <ResponsiveContainer>
-              <AreaChart data={metricRows}>
+              <AreaChart data={chartRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows, hours)} />
+                <XAxis {...xAxis} />
                 <YAxis domain={[0, node.disk_total]} ticks={quarters(node.disk_total)} tickFormatter={axisBytes} {...VALUE_AXIS} />
                 <Tooltip
-                  labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                  {...TOOLTIP}
                   formatter={(v) => bytes(Number(v))}
-                  contentStyle={TIP}
                 />
-                <Area dataKey="disk_used" name="硬盘" stroke="var(--color-chart-5)" fill="var(--color-chart-5)" fillOpacity={0.15} {...SERIES} />
+                <Area dataKey="disk_used" name="硬盘" stroke="var(--color-chart-5)" fill="var(--color-chart-5)" fillOpacity={0.15} {...RESOURCE_SERIES} />
               </AreaChart>
             </ResponsiveContainer>
           </Panel>
