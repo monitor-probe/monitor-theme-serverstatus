@@ -73,14 +73,17 @@ const VALUE_AXIS = { ...AXIS, width: 68, interval: 0 }
 // lines both read as texture.
 const PALETTE = [1, 2, 3, 4, 5].map((i) => `var(--color-chart-${i})`)
 
-// recharts paints its tooltip white unless told otherwise, which is a white box
-// on the dark theme.
-const TIP = {
-  fontSize: 12,
-  background: "var(--color-popover)",
-  color: "var(--color-popover-foreground)",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
+// Shared by every chart's tooltip. recharts paints it white unless told
+// otherwise, which is a white box on the dark theme.
+const TOOLTIP = {
+  labelFormatter: (ts: unknown) => new Date(Number(ts)).toLocaleString("zh-CN"),
+  contentStyle: {
+    fontSize: 12,
+    background: "var(--color-popover)",
+    color: "var(--color-popover-foreground)",
+    border: "1px solid var(--color-border)",
+    borderRadius: "var(--radius)",
+  },
 }
 
 function Panel({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
@@ -135,8 +138,8 @@ function useHistory(id: number, hours: number, series: "metrics" | "ping") {
     // approximate figure suffices, and the viewport is known before layout. A
     // rotation keeps whatever it fetched with.
     //
-    // Only the half on screen is requested; the other accounted for a third to two
-    // thirds of every response and was never drawn.
+    // Only the series on screen is requested; the other would make up a third to
+    // two thirds of every response and never be drawn.
     const points = Math.round(globalThis.innerWidth * (globalThis.devicePixelRatio || 1))
     api<History>(`/nodes/${id}/metrics?hours=${hours}&points=${points}&series=${series}`)
       .then((next) => { if (active) setData(next) })
@@ -270,9 +273,10 @@ export function Latency({ id, className }: { id: number; className?: string }) {
         row[`t${s.id}`] = p.latency
         row[`s${s.id}`] = line[i]
         row[`l${s.id}`] = p.loss ?? 0
-        // A bucket with a single answer carries no band and spans only that answer. Left null, `connectNulls`
-        // would bridge the hours between the few buckets that have one: 9 of
-        // 1,438 in a day, the widest gap 268 minutes, drawn as one large wedge.
+        // A bucket with a single answer carries no band and spans only that
+        // answer. Left null, `connectNulls` would bridge the hours between the
+        // few buckets that have one: 9 of 1,438 in a day, the widest gap 268
+        // minutes, drawn as one large wedge.
         row[`b${s.id}`] = p.band ?? (p.latency === null ? null : [p.latency, p.latency])
         // Taken as the span of three filtered series rather than a pair: the two
         // edges are filtered independently, so a bucket that answered slightly
@@ -349,10 +353,10 @@ export function Latency({ id, className }: { id: number; className?: string }) {
                   it, and zero flattens every wobble. */}
               <YAxis unit="ms" width={52} domain={["auto", "auto"]} {...AXIS} />
               <Tooltip
-                labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                {...TOOLTIP}
                 // The line is drawn from what answered, so without this a bucket
                 // that lost most of its packets reads as normal. `dataKey` is
-                // `t7`; the loss sits at `l7`.
+                // `t7`, or `s7` with spikes clipped; the loss sits at `l7`.
                 //
                 // Rounded because a clipped sample carries the median of an even
                 // window, which falls between two of the whole milliseconds the
@@ -361,7 +365,6 @@ export function Latency({ id, className }: { id: number; className?: string }) {
                   const loss = Number(item?.payload?.[`l${String(item.dataKey).slice(1)}`] ?? 0)
                   return [`${Math.round(Number(v))} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
                 }}
-                contentStyle={TIP}
               />
               {/* Behind the line, the range that bucket's answers spanned --
                   Smokeping's "smoke". At the day window a bucket moves 63 ms at
@@ -469,6 +472,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
       ),
     }
   }, [metricRows])
+  const xAxis = timeAxis(metricRows, hours)
 
   return (
     <div className="space-y-4">
@@ -476,7 +480,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
         <Dot node={node} />
         <h2 className="truncate text-lg font-semibold">{node.name}</h2>
         <Flag code={node.country} className="text-sm" />
-        <span className="tnum text-xs text-muted-foreground">
+        <span className="tabular-nums text-xs text-muted-foreground">
           {node.online ? `在线 ${m ? uptime(m.uptime) : ""}` : deployed(node) ? `离线 ${away >= 60 ? uptime(away) : ""}` : "未接入"}
         </span>
         {node.agent_version && <span className="text-xs text-muted-foreground">agent {node.agent_version}</span>}
@@ -507,12 +511,11 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
             <ResponsiveContainer>
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows, hours)} />
+                <XAxis {...xAxis} />
                 <YAxis {...axes.cpu} unit="%" {...VALUE_AXIS} />
                 <Tooltip
-                  labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                  {...TOOLTIP}
                   formatter={(v) => [`${Number(v).toFixed(1)}%`, "CPU"]}
-                  contentStyle={TIP}
                 />
                 <Area dataKey="cpu" stroke="var(--color-chart-1)" fill="var(--color-chart-1)" fillOpacity={0.15} {...SERIES} />
               </AreaChart>
@@ -528,12 +531,11 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
             <ResponsiveContainer>
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows, hours)} />
+                <XAxis {...xAxis} />
                 <YAxis domain={[0, node.mem_total]} ticks={quarters(node.mem_total)} tickFormatter={axisBytes} {...VALUE_AXIS} />
                 <Tooltip
-                  labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                  {...TOOLTIP}
                   formatter={(v) => bytes(Number(v))}
-                  contentStyle={TIP}
                 />
                 <Area dataKey="mem_used" name="内存" stroke="var(--color-chart-4)" fill="var(--color-chart-4)" fillOpacity={0.15} {...SERIES} />
               </AreaChart>
@@ -560,10 +562,10 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
               <>
                 网络速率
                 <span className="ml-3 whitespace-nowrap text-chart-2">
-                  ● 下行{peak && <span className="tnum text-muted-foreground"> 峰值 {rate(peak.rx)}</span>}
+                  ● 下行{peak && <span className="tabular-nums text-muted-foreground"> 峰值 {rate(peak.rx)}</span>}
                 </span>
                 <span className="ml-2 whitespace-nowrap text-chart-3">
-                  ● 上行{peak && <span className="tnum text-muted-foreground"> 峰值 {rate(peak.tx)}</span>}
+                  ● 上行{peak && <span className="tabular-nums text-muted-foreground"> 峰值 {rate(peak.tx)}</span>}
                 </span>
               </>
             }
@@ -571,10 +573,10 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
             <ResponsiveContainer>
               <ComposedChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows, hours)} />
+                <XAxis {...xAxis} />
                 <YAxis scale="log" {...axes.rate} tickFormatter={axisBytes} unit="/s" {...VALUE_AXIS} />
                 <Tooltip
-                  labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                  {...TOOLTIP}
                   // The hub's figures rather than `v`, which is lifted to the
                   // axis floor.
                   formatter={(_, name, item) => {
@@ -582,7 +584,6 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                     const top = item?.payload?.[`net_${item.dataKey}_max`]
                     return [top === undefined ? rate(mean) : `均值 ${rate(mean)} · 峰值 ${rate(top)}`, name]
                   }}
-                  contentStyle={TIP}
                 />
                 {[
                   { key: "rx", stroke: "var(--color-chart-2)" },
@@ -614,12 +615,11 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
             <ResponsiveContainer>
               <AreaChart data={metricRows}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                <XAxis {...timeAxis(metricRows, hours)} />
+                <XAxis {...xAxis} />
                 <YAxis domain={[0, node.disk_total]} ticks={quarters(node.disk_total)} tickFormatter={axisBytes} {...VALUE_AXIS} />
                 <Tooltip
-                  labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
+                  {...TOOLTIP}
                   formatter={(v) => bytes(Number(v))}
-                  contentStyle={TIP}
                 />
                 <Area dataKey="disk_used" name="硬盘" stroke="var(--color-chart-5)" fill="var(--color-chart-5)" fillOpacity={0.15} {...SERIES} />
               </AreaChart>

@@ -72,7 +72,7 @@ const DISTROS: [string, SimpleIcon][] = [
  * The distribution's logo in its brand colour. Mixed toward white on the dark
  * theme, where AlmaLinux's black and CentOS's navy would otherwise vanish.
  */
-export function OsIcon({ os, className }: { os: string; className?: string }) {
+function OsIcon({ os, className }: { os: string; className?: string }) {
   if (!os) return null
   const name = os.toLowerCase()
   const icon = DISTROS.find(([key]) => name.includes(key))?.[1] ?? siLinux
@@ -98,7 +98,7 @@ function Bar({ pct, label }: { pct: number | null; label?: string }) {
   return (
     <div className="relative h-5 overflow-hidden rounded bg-bar-track shadow-[inset_0_1px_2px_rgb(0_0_0/0.1)] @max-3xl:h-4">
       <div className={cn("h-full rounded-l-[3px] transition-[width] duration-500", tone)} style={{ width: `${v}%` }} />
-      <span className="tnum absolute inset-y-0 left-1.5 flex items-center text-[10px] leading-none text-bar-text @max-3xl:left-0.5 @max-3xl:text-[8px]">
+      <span className="tabular-nums absolute inset-y-0 left-1.5 flex items-center text-[10px] leading-none text-bar-text @max-3xl:left-0.5 @max-3xl:text-[8px]">
         {label ?? (pct === null ? "—" : `${v.toFixed(1)}%`)}
       </span>
     </div>
@@ -136,7 +136,7 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid min-w-0 grid-cols-[5.5em_minmax(0,1fr)] gap-x-2">
       <span className="text-muted-foreground">{label}</span>
-      <span className="tnum break-words">{children}</span>
+      <span className="tabular-nums break-words">{children}</span>
     </div>
   )
 }
@@ -235,7 +235,7 @@ function Row({ node, index }: { node: Node; index: number }) {
         tabIndex={0}
         onClick={toggle}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggle())}
-        className={cn("cursor-pointer border-0 hover:bg-accent", shade)}
+        className={cn("cursor-pointer hover:bg-accent", shade)}
       >
         <TableCell className={COL.status}><Dot node={node} className="mx-auto block @max-3xl:size-2.5" /></TableCell>
         <TableCell className={COL.name} title={node.name}>{node.name}</TableCell>
@@ -255,7 +255,7 @@ function Row({ node, index }: { node: Node; index: number }) {
         <TableCell className={COL.bar}><Bar pct={m ? percent(m.disk_used, m.disk_total) : null} /></TableCell>
         <TableCell
           className={COL.traffic}
-          title={`本月已用 ${node.traffic_limit > 0 ? `${pair(traffic, node.traffic_limit)}（${((traffic / node.traffic_limit) * 100).toFixed(1)}%）` : `${bytes(traffic)} · 无流量配额`}`}
+          title={`本月已用 ${node.traffic_limit > 0 ? `${pair(traffic, node.traffic_limit)}（${percent(traffic, node.traffic_limit).toFixed(1)}%）` : `${bytes(traffic)} · 无流量配额`}`}
         >
           <Bar
             pct={node.traffic_limit > 0 ? percent(traffic, node.traffic_limit) : null}
@@ -264,7 +264,7 @@ function Row({ node, index }: { node: Node; index: number }) {
         </TableCell>
       </TableRow>
       {open && (
-        <TableRow className={cn("border-0 hover:bg-transparent", shade)}>
+        <TableRow className={shade}>
           <TableCell colSpan={12} className="border-t-0! p-0! text-left whitespace-normal">
             <Details node={node} />
           </TableCell>
@@ -308,7 +308,7 @@ function ServerTable({ title, nodes }: { title: string; nodes: Node[] }) {
     <section className="@container rounded-md border bg-card p-5 text-card-foreground shadow-sm max-md:p-2">
       <div className="grid grid-cols-[1fr_auto_1fr] items-baseline gap-x-3 gap-y-1 px-1 pb-3 max-md:pb-2 @max-3xl:grid-cols-1">
         <h2 className="min-w-0 truncate text-lg font-semibold max-md:text-sm" title={title}>{title}</h2>
-        <div className="tnum flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground max-md:text-[10px]">
+        <div className="tabular-nums flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground max-md:text-[10px]">
           <span className="whitespace-nowrap">
             在线 {nodes.filter((n) => n.online).length} / {nodes.length} · ↓ {compact(sum((n) => n.metrics!.net_rx))}/s · ↑{" "}
             {compact(sum((n) => n.metrics!.net_tx))}/s
@@ -318,7 +318,7 @@ function ServerTable({ title, nodes }: { title: string; nodes: Node[] }) {
       </div>
       <Table className="text-center text-sm @max-3xl:table-fixed @max-3xl:text-[10px]">
         <TableHeader>
-          <TableRow className="border-0 hover:bg-transparent">
+          <TableRow>
             {heads.map(([col, label], i) => (
               <TableHead key={i} className={cn("h-8 border-t px-1.5 text-center font-semibold @max-3xl:px-0.5", COL[col])}>
                 {label}

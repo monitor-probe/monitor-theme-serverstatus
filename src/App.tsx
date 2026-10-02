@@ -10,7 +10,7 @@ import { Link, useNodeRoute } from "@/lib/route"
 
 // `history_days` is absent from hubs predating the hourly tier, which kept a
 // week for anonymous callers.
-type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean; history_days?: number }
+type Me = { authed: boolean; site_name: string; public_page: boolean; history_days?: number }
 
 // Split out because recharts is most of the bundle and the list draws no chart.
 // Warmed as soon as the app starts, so the first chart opened does not wait on it.

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 
-export type Metrics = {
+type Metrics = {
   uptime: number
   cpu: number
   load: [number, number, number]
@@ -25,7 +25,6 @@ export type Node = {
   id: number
   name: string
   sort: number
-  public: boolean
   online: boolean
   /** ISO 3166-1 alpha-2, or empty when the hub could not locate the address. */
   country: string
@@ -61,12 +60,9 @@ export type Node = {
   month_tx: number
   /** This period's usage as the plan meters it (`traffic_mode`). Absent on older hubs. */
   month_used?: number
-  month_start: string
   day_rx: number
   day_tx: number
-  /** Panel only. */
-  hostname?: string
-  ip?: string
+  /** Sent only to a signed-in visitor, who receives the panel's view. */
   remark?: string
 }
 
@@ -96,18 +92,14 @@ async function failure(res: Response): Promise<ApiError> {
   )
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+export async function api<T>(path: string): Promise<T> {
   let res: Response
   try {
-    res = await fetch(`/api${path}`, {
-      ...init,
-      headers: init?.body ? { "content-type": "application/json", ...init?.headers } : init?.headers,
-    })
+    res = await fetch(`/api${path}`)
   } catch {
     throw new ApiError(0, "网络连接失败，稍后再试")
   }
   if (!res.ok) throw await failure(res)
-  if (res.status === 204) return undefined as T
   // A 200 carrying HTML is a proxy's page, not the hub's JSON.
   return res.json().catch(() => {
     throw new ApiError(res.status, "收到的不是状态数据，稍后再试")
@@ -143,7 +135,7 @@ export function useNodes() {
     let socket: WebSocket | null = null
     let poll: ReturnType<typeof setInterval> | null = null
     let retry: ReturnType<typeof setTimeout> | null = null
-    let closed = false
+    let stopped = false
 
     const receive = (list: Node[]) => {
       setNodes(safeNodes(list))
@@ -164,7 +156,7 @@ export function useNodes() {
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/ws`
     // A hub restart closes every stream. Without reconnecting, a page that
     // outlives a deploy would remain on the fallback poll for the rest of its
-    // life, refreshing at a fifth of the live rate with no indication.
+    // life, refreshing every 5 seconds rather than 2 with no indication.
     const connect = () => {
       try {
         socket = new WebSocket(url)
@@ -182,7 +174,7 @@ export function useNodes() {
       }
       socket.onerror = () => socket?.close()
       socket.onclose = () => {
-        if (closed) return
+        if (stopped) return
         poll ??= setInterval(fetchOnce, 5000)
         retry = setTimeout(connect, 5000)
       }
@@ -190,7 +182,7 @@ export function useNodes() {
     connect()
 
     return () => {
-      closed = true
+      stopped = true
       socket?.close()
       if (poll) clearInterval(poll)
       if (retry) clearTimeout(retry)

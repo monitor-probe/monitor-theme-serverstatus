@@ -21,8 +21,6 @@
   --popover-foreground: #212121;
   --primary: #337ab7;
   --primary-foreground: #ffffff;
-  --secondary: #f5f5f5;
-  --secondary-foreground: #212121;
   --muted: #f9f9f9;
   --muted-foreground: #777777;
   --accent: #e6e6e6;
@@ -62,8 +60,6 @@
   --popover-foreground: #f1f1f1;
   --primary: #4992ff;
   --primary-foreground: #ffffff;
-  --secondary: #22232e;
-  --secondary-foreground: #f1f1f1;
   --muted: #22232e;
   --muted-foreground: #aaaaaa;
   --accent: #303241;
@@ -92,10 +88,7 @@
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -104,8 +97,6 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
@@ -132,6 +123,3 @@
   html { scrollbar-gutter: stable; }
   body { @apply bg-background text-foreground; }
 }
-
-/* Tabular figures keep live numbers from shifting as they update. */
-.tnum { font-variant-numeric: tabular-nums; }
