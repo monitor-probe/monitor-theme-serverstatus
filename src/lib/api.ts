@@ -143,28 +143,36 @@ export function useNodes() {
       setClosed(false)
     }
 
-    const fetchOnce = () =>
-      api<{ nodes: Node[] }>("/nodes")
-        .then((d) => receive(d.nodes))
+    // Bumped by `pause`: a request started before the page was hidden may fail
+    // or land after a fresh one, and neither result describes the page now.
+    let epoch = 0
+    const fetchOnce = () => {
+      const started = epoch
+      return api<{ nodes: Node[] }>("/nodes")
+        .then((d) => {
+          if (started === epoch) receive(d.nodes)
+        })
         .catch((e: Error) => {
+          if (started !== epoch) return
           setError(e.message)
           if (e instanceof ApiError && e.status === 401) setClosed(true)
         })
-
-    fetchOnce()
+    }
 
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/ws`
     // A hub restart closes every stream. Without reconnecting, a page that
     // outlives a deploy would remain on the fallback poll for the rest of its
     // life, refreshing every 5 seconds rather than 2 with no indication.
     const connect = () => {
+      let opened: WebSocket
       try {
-        socket = new WebSocket(url)
+        opened = new WebSocket(url)
       } catch {
         poll ??= setInterval(fetchOnce, 5000)
         return
       }
-      socket.onmessage = (event) => {
+      socket = opened
+      opened.onmessage = (event) => {
         receive(JSON.parse(event.data).nodes)
         // The stream has returned; the poll was only covering for it.
         if (poll) {
@@ -172,20 +180,44 @@ export function useNodes() {
           poll = null
         }
       }
-      socket.onerror = () => socket?.close()
-      socket.onclose = () => {
+      opened.onerror = () => opened.close()
+      opened.onclose = () => {
         if (stopped) return
         poll ??= setInterval(fetchOnce, 5000)
         retry = setTimeout(connect, 5000)
       }
     }
-    connect()
+
+    // A phone suspends a page it sends to the background and drops its
+    // connections without telling it. Back in front, the socket may still read
+    // as open while nothing arrives, or close and wait out the retry, either
+    // way leaving the figures from before; a request caught in flight fails.
+    // So a hidden page lets go of the stream and starts nothing, and a visible
+    // one fetches at once and opens a fresh stream.
+    const pause = () => {
+      epoch++
+      if (socket) {
+        socket.onclose = null
+        socket.close()
+        socket = null
+      }
+      if (poll) clearInterval(poll)
+      if (retry) clearTimeout(retry)
+      poll = retry = null
+    }
+    const resume = () => {
+      pause()
+      fetchOnce()
+      connect()
+    }
+    const visibility = () => (document.hidden ? pause() : resume())
+    document.addEventListener("visibilitychange", visibility)
+    resume()
 
     return () => {
       stopped = true
-      socket?.close()
-      if (poll) clearInterval(poll)
-      if (retry) clearTimeout(retry)
+      document.removeEventListener("visibilitychange", visibility)
+      pause()
     }
   }, [])
 
