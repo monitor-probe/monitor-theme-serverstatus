@@ -134,7 +134,7 @@ eq(RATE_FLOOR, 1024, "底是 1 KB/s")
 
 // sinceSeen: the hub's count wins, null included; only its absence falls back to the browser's.
 eq(sinceSeen({ last_seen: 1, last_seen_ago: 120 }), 120, "按 hub 的时钟")
-eq(sinceSeen({ last_seen: 0, last_seen_ago: null }), 0, "hub 说从未上报")
+eq(sinceSeen({ last_seen: Date.now() / 1000 - 300, last_seen_ago: null }), 0, "hub 说从未上报，不改用浏览器计算")
 eq(Math.round(sinceSeen({ last_seen: Date.now() / 1000 - 300 })), 300, "旧 hub 由浏览器计算")
 
 // daysUntil: whole days, negative once past, null when there is no date.
