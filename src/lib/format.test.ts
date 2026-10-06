@@ -5,7 +5,7 @@
 // Nothing imports it, so the bundle never includes it.
 import {
   axisBytes, axisTop, bytes, compact, cpuName, cycle, daysUntil, despike, distro, duration, expiresIn, money, monthUsage,
-  osName, pair, quarters, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime, windows, withGaps,
+  osName, pair, quarters, RATE_FLOOR, rateAxis, sinceSeen, tickClock, timeTicks, uptime, windows, withGaps,
 } from "./format.ts"
 
 let failed = 0
@@ -131,6 +131,11 @@ eq(RATE_FLOOR, 1024, "底是 1 KB/s")
   eq(hours(8), [1, 6, 24, 192], "8 天不再并列 7 天")
   eq(windows(1).map((w) => w.label), ["1 小时", "6 小时", "1 天"], "一天")
 }
+
+// sinceSeen: the hub's count wins, null included; only its absence falls back to the browser's.
+eq(sinceSeen({ last_seen: 1, last_seen_ago: 120 }), 120, "按 hub 的时钟")
+eq(sinceSeen({ last_seen: Date.now() / 1000 - 300, last_seen_ago: null }), 0, "hub 说从未上报，不改用浏览器计算")
+eq(Math.round(sinceSeen({ last_seen: Date.now() / 1000 - 300 })), 300, "旧 hub 由浏览器计算")
 
 // daysUntil: whole days, negative once past, null when there is no date.
 {
