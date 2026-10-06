@@ -149,6 +149,18 @@ export function safeNodes(nodes: Node[]): Node[] {
 }
 
 /**
+ * Asks the hub to gzip each pushed frame, sent then as a binary message: a
+ * hundred reporting nodes are about 110 KB of JSON every two seconds, 15 KB
+ * compressed. Only where the browser can decompress it; a hub that predates the
+ * parameter ignores it and sends text, which [frameText] passes through.
+ */
+const GZIP = typeof DecompressionStream === "function" ? "?gzip" : ""
+
+/** A pushed frame as text: a gzipped one arrives as binary. */
+const frameText = (data: string | Blob) =>
+  typeof data === "string" ? data : new Response(data.stream().pipeThrough(new DecompressionStream("gzip"))).text()
+
+/**
  * Live node list. Uses the WebSocket the hub pushes every two seconds, falling
  * back to polling if it cannot be established.
  */
@@ -192,7 +204,7 @@ export function useNodes() {
         })
     }
 
-    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/ws`
+    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/ws${GZIP}`
     // A hub restart closes every stream. Without reconnecting, a page that
     // outlives a deploy would remain on the fallback poll for the rest of its
     // life, refreshing every 5 seconds rather than 2 with no indication.
@@ -205,7 +217,7 @@ export function useNodes() {
         return
       }
       socket = opened
-      // Re-armed by every frame. Five of the hub's two-second pushes without one
+      // Re-armed by every frame read. Five of the hub's two-second pushes without one
       // mean the connection died without closing, as when a NAT on the path
       // forgets it or the hub's machine drops off the network; the browser sends
       // nothing on it and would notice only when TCP keepalive gives up, 450 s
@@ -222,14 +234,25 @@ export function useNodes() {
         }, 10_000)
       }
       watch()
+      // In arrival order: a gzipped frame decodes asynchronously, and one that
+      // finishes after this stream closed or was replaced describes nothing
+      // current. Only a frame that reads re-arms the watchdog, so a stream whose
+      // frames cannot be read counts as silent and is replaced.
+      let decoded = Promise.resolve()
       opened.onmessage = (event) => {
-        watch()
-        receive(JSON.parse(event.data).nodes)
-        // The stream has returned; the poll was only covering for it.
-        if (poll) {
-          clearInterval(poll)
-          poll = null
-        }
+        decoded = decoded
+          .then(async () => {
+            const nodes = JSON.parse(await frameText(event.data)).nodes
+            if (opened.readyState !== WebSocket.OPEN) return
+            watch()
+            receive(nodes)
+            // The stream has returned; the poll was only covering for it.
+            if (poll) {
+              clearInterval(poll)
+              poll = null
+            }
+          })
+          .catch((e) => console.warn("live frame dropped:", e))
       }
       opened.onerror = () => opened.close()
       opened.onclose = () => {
