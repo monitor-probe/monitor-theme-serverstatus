@@ -8,8 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { deployed, Dot, Flag, Tab } from "@/components/ServerTable"
 import { api, type Node } from "@/lib/api"
 import {
-  axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, RATE_FLOOR, rateAxis, tickClock, timeTicks, uptime,
-  windows, withGaps,
+  axisBytes, axisTop, bytes, clockFor, despike, quarters, rate, RATE_FLOOR, rateAxis, sinceSeen, tickClock, timeTicks,
+  uptime, windows, withGaps,
 } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -421,7 +421,7 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
   const { data, failed, retry } = useHistory(node.id, hours, "metrics")
 
   const m = node.metrics
-  const away = node.last_seen ? Date.now() / 1000 - node.last_seen : 0
+  const away = sinceSeen(node)
 
   // The hub answers in seconds; the time axis requires milliseconds. Each rate
   // also spans from its mean to its peak, which is the band drawn behind the

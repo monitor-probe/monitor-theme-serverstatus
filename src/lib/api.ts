@@ -31,6 +31,8 @@ export type Node = {
   /** Set by the operator; empty is ungrouped. Absent from a hub predating groups. */
   group?: string
   last_seen: number
+  /** Seconds since `last_seen` on the hub's clock, null for a node never seen. Absent on older hubs. */
+  last_seen_ago?: number | null
   metrics: Metrics | null
   os: string
   kernel: string

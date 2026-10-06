@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { groupsOf, type Node } from "@/lib/api"
 import {
   bytes, compact, cycle, distro, duration, expiresIn, FOREVER, money, monthUsage, osName, cpuName, pair,
-  percent, rate, uptime,
+  percent, rate, sinceSeen, uptime,
 } from "@/lib/format"
 import { Link } from "@/lib/route"
 import { cn } from "@/lib/utils"
@@ -167,7 +167,7 @@ function Details({ node }: { node: Node }) {
   const m = node.online ? node.metrics : null
   const usage = (used: number, total: number) => `${pair(used, total)}（${percent(used, total).toFixed(1)}%）`
   const flow = (rx: number, tx: number) => `↓ ${bytes(rx)} · ↑ ${bytes(tx)}`
-  const away = node.last_seen ? Date.now() / 1000 - node.last_seen : 0
+  const away = sinceSeen(node)
   const days = expiresIn(node)
 
   return (
