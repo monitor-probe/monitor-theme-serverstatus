@@ -92,18 +92,46 @@ async function failure(res: Response): Promise<ApiError> {
   )
 }
 
+/**
+ * How long one attempt may go unanswered. A connection that died without
+ * closing, as when a NAT on a phone's path forgets it, holds a request sent over
+ * it until TCP gives up: still pending after 300 s in Chrome over HTTP/1.1,
+ * which nginx serves unless configured for HTTP/2. Over HTTP/2 Chrome replaces
+ * the dead connection after 10 s itself, but only for a request sent once the
+ * connection has been idle 10 s; one sent sooner hangs as over HTTP/1.1.
+ * Healthy, the slowest request here, a node's history, answers within 3 s on 4G.
+ */
+const TIMEOUT = 20_000
+
+/**
+ * Further attempts after a timeout. The aborted connection is closed, but the
+ * next attempt takes the next idle one, which may be dead as well: Chrome keeps
+ * up to six per host, and with four dead the fifth attempt was the first to
+ * succeed. Every request here is a GET, so repeating one is safe.
+ */
+const RETRIES = 6
+
 export async function api<T>(path: string): Promise<T> {
-  let res: Response
-  try {
-    res = await fetch(`/api${path}`)
-  } catch {
-    throw new ApiError(0, "网络连接失败，稍后再试")
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(`/api${path}`, { signal: AbortSignal.timeout(TIMEOUT) })
+      if (!res.ok) throw await failure(res)
+      // A 200 carrying HTML is a proxy's page, not the hub's JSON.
+      return await res.json().catch((e) => {
+        throw e instanceof SyntaxError ? new ApiError(res.status, "收到的不是状态数据，稍后再试") : e
+      })
+    } catch (e) {
+      if (e instanceof ApiError) throw e
+      // Anything else failed on the network, the body's read included, where
+      // the timeout also applies. Chrome names a timeout before the response
+      // TimeoutError and one during the body's read AbortError; nothing else
+      // here aborts a request.
+      const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
+      if (!timedOut || attempt === RETRIES) {
+        throw new ApiError(0, "网络连接失败，稍后再试")
+      }
+    }
   }
-  if (!res.ok) throw await failure(res)
-  // A 200 carrying HTML is a proxy's page, not the hub's JSON.
-  return res.json().catch(() => {
-    throw new ApiError(res.status, "收到的不是状态数据，稍后再试")
-  })
 }
 
 /** A malformed report must not remove every other node from the page. */
@@ -154,6 +182,9 @@ export function useNodes() {
         })
         .catch((e: Error) => {
           if (started !== epoch) return
+          // A request lost on a dead pooled connection says nothing of an open
+          // stream, whose own watchdog reports it going quiet.
+          if (e instanceof ApiError && e.status === 0 && socket?.readyState === WebSocket.OPEN) return
           setError(e.message)
           if (e instanceof ApiError && e.status === 401) setClosed(true)
         })
