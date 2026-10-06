@@ -184,7 +184,7 @@ export function useNodes() {
         return
       }
       socket = opened
-      // Re-armed by every frame. Five of the hub's two-second pushes without one
+      // Re-armed by every frame read. Five of the hub's two-second pushes without one
       // mean the connection died without closing, as when a NAT on the path
       // forgets it or the hub's machine drops off the network; the browser sends
       // nothing on it and would notice only when TCP keepalive gives up, 450 s
@@ -202,14 +202,16 @@ export function useNodes() {
       }
       watch()
       // In arrival order: a gzipped frame decodes asynchronously, and one that
-      // finishes after this stream was replaced describes nothing current.
+      // finishes after this stream closed or was replaced describes nothing
+      // current. Only a frame that reads re-arms the watchdog, so a stream whose
+      // frames cannot be read counts as silent and is replaced.
       let decoded = Promise.resolve()
       opened.onmessage = (event) => {
-        watch()
         decoded = decoded
           .then(async () => {
             const nodes = JSON.parse(await frameText(event.data)).nodes
-            if (socket !== opened) return
+            if (opened.readyState !== WebSocket.OPEN) return
+            watch()
             receive(nodes)
             // The stream has returned; the poll was only covering for it.
             if (poll) {
@@ -217,7 +219,7 @@ export function useNodes() {
               poll = null
             }
           })
-          .catch(() => {})
+          .catch((e) => console.warn("live frame dropped:", e))
       }
       opened.onerror = () => opened.close()
       opened.onclose = () => {
