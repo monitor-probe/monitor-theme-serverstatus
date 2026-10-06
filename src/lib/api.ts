@@ -135,7 +135,7 @@ export function useNodes() {
     let socket: WebSocket | null = null
     let poll: ReturnType<typeof setInterval> | null = null
     let retry: ReturnType<typeof setTimeout> | null = null
-    let stopped = false
+    let silent: ReturnType<typeof setTimeout> | null = null
 
     const receive = (list: Node[]) => {
       setNodes(safeNodes(list))
@@ -143,28 +143,54 @@ export function useNodes() {
       setClosed(false)
     }
 
-    const fetchOnce = () =>
-      api<{ nodes: Node[] }>("/nodes")
-        .then((d) => receive(d.nodes))
+    // Bumped by `pause`: a request started before the page was hidden may fail
+    // or land after a fresh one, and neither result describes the page now.
+    let epoch = 0
+    const fetchOnce = () => {
+      const started = epoch
+      return api<{ nodes: Node[] }>("/nodes")
+        .then((d) => {
+          if (started === epoch) receive(d.nodes)
+        })
         .catch((e: Error) => {
+          if (started !== epoch) return
           setError(e.message)
           if (e instanceof ApiError && e.status === 401) setClosed(true)
         })
-
-    fetchOnce()
+    }
 
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/ws`
     // A hub restart closes every stream. Without reconnecting, a page that
     // outlives a deploy would remain on the fallback poll for the rest of its
     // life, refreshing every 5 seconds rather than 2 with no indication.
     const connect = () => {
+      let opened: WebSocket
       try {
-        socket = new WebSocket(url)
+        opened = new WebSocket(url)
       } catch {
         poll ??= setInterval(fetchOnce, 5000)
         return
       }
-      socket.onmessage = (event) => {
+      socket = opened
+      // Re-armed by every frame. Five of the hub's two-second pushes without one
+      // mean the connection died without closing, as when a NAT on the path
+      // forgets it or the hub's machine drops off the network; the browser sends
+      // nothing on it and would notice only when TCP keepalive gives up, 450 s
+      // later in Chrome. The stream is replaced rather
+      // than closed and awaited: on a dead connection the close event arrives
+      // only after the 60 s closing handshake times out. The notice stays until
+      // data arrives, since with no network the fetch started alongside may hang
+      // rather than fail.
+      const watch = () => {
+        if (silent) clearTimeout(silent)
+        silent = setTimeout(() => {
+          setError("实时数据中断，正在重新连接")
+          resume()
+        }, 10_000)
+      }
+      watch()
+      opened.onmessage = (event) => {
+        watch()
         receive(JSON.parse(event.data).nodes)
         // The stream has returned; the poll was only covering for it.
         if (poll) {
@@ -172,20 +198,44 @@ export function useNodes() {
           poll = null
         }
       }
-      socket.onerror = () => socket?.close()
-      socket.onclose = () => {
-        if (stopped) return
+      opened.onerror = () => opened.close()
+      opened.onclose = () => {
+        if (silent) clearTimeout(silent)
         poll ??= setInterval(fetchOnce, 5000)
         retry = setTimeout(connect, 5000)
       }
     }
-    connect()
 
-    return () => {
-      stopped = true
-      socket?.close()
+    // A phone suspends a page it sends to the background and drops its
+    // connections without telling it. Back in front, the socket may still read
+    // as open while nothing arrives, or close and wait out the retry, either
+    // way leaving the figures from before; a request caught in flight fails.
+    // So a hidden page lets go of the stream and starts nothing, and a visible
+    // one fetches at once and opens a fresh stream.
+    const pause = () => {
+      epoch++
+      if (socket) {
+        socket.onclose = null
+        socket.close()
+        socket = null
+      }
       if (poll) clearInterval(poll)
       if (retry) clearTimeout(retry)
+      if (silent) clearTimeout(silent)
+      poll = retry = silent = null
+    }
+    const resume = () => {
+      pause()
+      fetchOnce()
+      connect()
+    }
+    const visibility = () => (document.hidden ? pause() : resume())
+    document.addEventListener("visibilitychange", visibility)
+    resume()
+
+    return () => {
+      document.removeEventListener("visibilitychange", visibility)
+      pause()
     }
   }, [])
 
