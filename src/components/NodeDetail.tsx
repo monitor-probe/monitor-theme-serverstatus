@@ -252,10 +252,8 @@ export function Latency({ id, className }: { id: number; className?: string }) {
   // change, which they do not. Hiding a probe or clipping the spikes therefore
   // selects a `dataKey` rather than rebuilding the array.
   const pingRows = useMemo(() => {
-    const rows = new Map<
-      number,
-      { ts: number } & Record<string, number | [number, number] | null>
-    >()
+    type Row = { ts: number } & Record<string, number | [number, number] | null>
+    const rows = new Map<number, Row>()
     for (const s of pingSeries) {
       const windowSize = despikeWindow(s.points)
       const line = despike(s.points.map((p) => p.latency), windowSize)
@@ -265,7 +263,7 @@ export function Latency({ id, className }: { id: number; className?: string }) {
       const lo = despike(s.points.map((p) => p.band?.[0] ?? p.latency), windowSize)
       const hi = despike(s.points.map((p) => p.band?.[1] ?? p.latency), windowSize)
       s.points.forEach((p, i) => {
-        const row = rows.get(p.ts) ?? { ts: p.ts * 1_000 }
+        const row: Row = rows.get(p.ts) ?? { ts: p.ts * 1_000 }
         row[`t${s.id}`] = p.latency
         row[`s${s.id}`] = line[i]
         row[`l${s.id}`] = p.loss ?? 0
