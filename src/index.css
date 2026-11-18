@@ -19,12 +19,15 @@
   --card-foreground: #212121;
   --popover: #ffffff;
   --popover-foreground: #212121;
-  --primary: #337ab7;
+  /* Darker than Bootstrap's #337ab7, which as text measures 4.3:1 on the nav
+     bar and 3.7:1 on a selected row; this is 5.4 and 4.6, and 5.7 under white. */
+  --primary: #2b6aa3;
   --primary-foreground: #ffffff;
   --muted: #f9f9f9;
   /* Darker than Bootstrap's #777, which falls short of 4.5:1 on the card, the
-     striped rows and the page behind them; this clears it on all three. */
-  --muted-foreground: #707070;
+     striped rows, the page behind them and a hovered or selected row; this
+     clears it on all four, 4.6:1 on the last. */
+  --muted-foreground: #666666;
   --accent: #e6e6e6;
   --accent-foreground: #212121;
   --destructive: #a94442;
@@ -60,8 +63,10 @@
   --card-foreground: #f1f1f1;
   --popover: #22232e;
   --popover-foreground: #f1f1f1;
-  --primary: #4992ff;
-  --primary-foreground: #ffffff;
+  /* Light enough to read as text on the page and a selected row (4.7 and
+     4.9:1). White on it would measure 2.6:1, so the text on it is dark, 7.2:1. */
+  --primary: #62a1ff;
+  --primary-foreground: #0b1220;
   --muted: #22232e;
   --muted-foreground: #aaaaaa;
   --accent: #303241;
@@ -69,7 +74,7 @@
   --destructive: #e0605c;
   --border: #3a3e41;
   --input: rgb(255 255 255 / 15%);
-  --ring: #4992ff;
+  --ring: #62a1ff;
   --nav: #1c2127;
   --chart-1: oklch(0.72 0.08 252);
   --chart-2: oklch(0.72 0.08 162);

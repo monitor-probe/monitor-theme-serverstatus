@@ -198,7 +198,7 @@ export default function App() {
             <ServerTable nodes={sorted} group={group} onGroup={setGroup} />
           )
         ) : selected ? (
-          <div className="grid gap-5 rounded-md border bg-card p-5 text-card-foreground shadow-sm max-md:gap-3 max-md:p-2.5 md:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-5 rounded-md border bg-card p-5 text-card-foreground shadow-sm max-md:gap-3 max-md:p-2.5 md:grid-cols-[220px_minmax(0,1fr)]">
             <NodePicker nodes={sorted} selected={selected.id} />
             <div className="min-w-0">
               <Suspense fallback={<Skeleton className="h-96" />}>
