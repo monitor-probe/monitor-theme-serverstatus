@@ -170,6 +170,13 @@ eq(distro("Debian GNU/Linux 13 (trixie)"), "Debian 13", "Debian 只留主版本"
 eq(distro("Alpine Linux v3.24"), "Alpine 3.24", "Alpine 去掉 Linux 与 v")
 eq(distro("Ubuntu 24.04.1 LTS"), "Ubuntu 24.04", "Ubuntu 留到次版本")
 eq(distro("Arch Linux"), "Arch", "没有版本号")
+eq(distro("Red Hat Enterprise Linux 9.4 (Plow)"), "RHEL 9.4", "Red Hat 写成 RHEL")
+eq(distro("Linux Mint 21.3"), "Mint 21.3", "Linux 在前时跳过")
+eq(distro("Linux Mint"), "Mint", "没有版本号时同样跳过 Linux")
+eq(distro("Kylin Linux Advanced Server V10 (Halberd)"), "Kylin 10", "大写 V 的版本号")
+eq(distro("4MLinux 45.0"), "4MLinux 45.0", "版本号从词首开始")
+eq(distro("Alibaba Cloud Linux (Aliyun Linux) 2.1903 LTS"), "Alibaba 2.1903", "版本号前的括号不进名字")
+eq(distro("openSUSE Leap 15.6"), "openSUSE 15.6", "只留第一个词")
 eq(distro(""), "", "未上报")
 
 eq(duration(90), "0:01:30", "不足一小时")

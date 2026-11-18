@@ -60,11 +60,28 @@ export function compact(n: number): string {
   return `${Number(v.toFixed(i === 0 || v >= 100 ? 0 : v >= 10 ? 1 : 2))}${UNITS[i][0]}`
 }
 
-/** Distribution and major version only: "Debian GNU/Linux 13 (trixie)" is "Debian 13". */
+// Names that lead with more than one word of their own, which the first word
+// alone would leave unrecognisable ("Red 9.4").
+const ALIASES: [RegExp, string][] = [[/^Red Hat Enterprise Linux\b/, "RHEL"]]
+const GENERIC = new Set(["gnu/linux", "linux"])
+
+/**
+ * Distribution and major version only: "Debian GNU/Linux 13 (trixie)" is
+ * "Debian 13". The name is the first word before the version that is not
+ * "Linux", so "Linux Mint 21.3" reads "Mint 21.3"; one word keeps the column
+ * narrow. The version starts a word, optionally after a "v" as in "v3.20" or
+ * Kylin's "V10", so the 4 of "4MLinux" is not taken for one.
+ */
 export function distro(os: string): string {
-  const name = os.trim().split(/\s+/)[0]
-  const version = os.match(/\d+(?:\.\d+)?/)?.[0]
-  return version ? `${name} ${version}` : name
+  const named = ALIASES.reduce((s, [from, to]) => s.replace(from, to), os.trim())
+  const version = named.match(/(?:^|\s)v?(\d+(?:\.\d+)?)\b/i)
+  const before = version ? named.slice(0, version.index) : named
+  const name =
+    before
+      .replace(/\([^)]*\)/g, " ")
+      .split(/\s+/)
+      .find((w) => w && !GENERIC.has(w.toLowerCase())) ?? named.split(/\s+/)[0]
+  return version ? `${name} ${version[1]}` : name
 }
 
 /** Whole days once past one, a running clock below it. */
