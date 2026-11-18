@@ -170,6 +170,9 @@ eq(distro("Debian GNU/Linux 13 (trixie)"), "Debian 13", "Debian 只留主版本"
 eq(distro("Alpine Linux v3.24"), "Alpine 3.24", "Alpine 去掉 Linux 与 v")
 eq(distro("Ubuntu 24.04.1 LTS"), "Ubuntu 24.04", "Ubuntu 留到次版本")
 eq(distro("Arch Linux"), "Arch", "没有版本号")
+eq(distro("Red Hat Enterprise Linux 9.4 (Plow)"), "Red Hat 9.4", "两个词的发行版名不截成一个")
+eq(distro("Linux Mint 21.3"), "Mint 21.3", "Linux 在前时跳过")
+eq(distro("CentOS Stream 9"), "CentOS 9", "去掉 Stream")
 eq(distro(""), "", "未上报")
 
 eq(duration(90), "0:01:30", "不足一小时")

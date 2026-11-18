@@ -60,12 +60,23 @@ export function compact(n: number): string {
   return `${Number(v.toFixed(i === 0 || v >= 100 ? 0 : v >= 10 ? 1 : 2))}${UNITS[i][0]}`
 }
 
-/** Distribution and major version only: "Debian GNU/Linux 13 (trixie)" is "Debian 13". */
+/**
+ * Distribution and major version only: "Debian GNU/Linux 13 (trixie)" is
+ * "Debian 13". The name is the words before the version less the generic ones,
+ * at most two, so "Red Hat Enterprise Linux 9.4" reads "Red Hat 9.4" and
+ * "Linux Mint 21.3" reads "Mint 21.3" rather than "Linux 21.3".
+ */
 export function distro(os: string): string {
-  const name = os.trim().split(/\s+/)[0]
-  const version = os.match(/\d+(?:\.\d+)?/)?.[0]
-  return version ? `${name} ${version}` : name
+  const version = os.match(/\d+(?:\.\d+)?/)
+  if (!version) return os.trim().split(/\s+/)[0]
+  const words = os
+    .slice(0, version.index)
+    .split(/\s+/)
+    .filter((w) => w && !GENERIC.has(w))
+  return [...words.slice(0, 2), version[0]].join(" ")
 }
+
+const GENERIC = new Set(["GNU/Linux", "Linux", "Enterprise", "Server", "Stream", "Leap", "OS", "v"])
 
 /** Whole days once past one, a running clock below it. */
 export function duration(seconds: number): string {
