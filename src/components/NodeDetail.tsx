@@ -82,11 +82,19 @@ const VALUE_AXIS = { ...AXIS, width: 68, interval: 0 }
 // Hue alone separates the probes. A dash pattern would not: once every ping in a
 // day is on the chart its period is shorter than the jitter, and dotted and dashed
 // lines both read as texture.
-const PALETTE = [1, 2, 3, 4, 5].map((i) => `var(--color-chart-${i})`)
+//
+// Spelled out rather than built from an index: Tailwind emits a theme variable
+// only when its full name appears in the source, so a template would leave
+// --color-chart-2 and --color-chart-3 undefined and those probes undrawn.
+const PALETTE = [
+  "var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)",
+]
 
 // Shared by every chart's tooltip. recharts paints it white unless told
 // otherwise, which is a white box on the dark theme. The entries take the text
-// colour rather than their series' hue, which as text falls short of 4.5:1.
+// colour rather than their series' hue: on the light popover upload's amber and
+// three of the probe hues measure 3.3 to 3.6:1 as text. Where a chart has
+// several series, `swatched` puts each line's mark beside its entry instead.
 const TOOLTIP = {
   labelFormatter: (ts: unknown) => new Date(Number(ts)).toLocaleString("zh-CN"),
   contentStyle: {
@@ -97,6 +105,37 @@ const TOOLTIP = {
     borderRadius: "var(--radius)",
   },
   itemStyle: { color: "var(--color-popover-foreground)" },
+}
+
+/** A short stroke in a line's colour, the mark every legend and tooltip entry uses. */
+function Swatch({ color, className }: { color: string; className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="6"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      className={cn("inline-block shrink-0 align-middle", className)}
+      aria-hidden
+    >
+      <line x1="0" y1="3" x2="14" y2="3" />
+    </svg>
+  )
+}
+
+/**
+ * A tooltip entry led by its line's mark. recharts draws a name only when it is
+ * plain text, so the mark, name and value travel together as the value.
+ */
+function swatched(text: string, name: unknown, color: unknown): [React.ReactNode, undefined] {
+  return [
+    <span key="entry" className="inline-flex items-center gap-1.5">
+      <Swatch color={String(color)} />
+      {String(name)} : {text}
+    </span>,
+    undefined,
+  ]
 }
 
 function Panel({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
@@ -310,19 +349,19 @@ export function Latency({ id, className }: { id: number; className?: string }) {
               onClick={() =>
                 setHiddenProbes((h) => (shown ? [...h, s.id] : h.filter((id) => id !== s.id)))
               }
-              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-opacity ${
-                shown ? "" : "opacity-40"
-              }`}
+              // Switched off in the muted text colour rather than faded as a
+              // whole: at 40% opacity the name would measure 2.4:1.
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors",
+                !shown && "text-muted-foreground",
+              )}
             >
-              {/* The swatch carries the same colour as the line. */}
-              <svg width="14" height="6" className="shrink-0" aria-hidden>
-                <line x1="0" y1="3" x2="14" y2="3" stroke={color(s.id)} strokeWidth="2" />
-              </svg>
+              <Swatch color={color(s.id)} className={cn(!shown && "opacity-40")} />
               {s.name}
               {/* Always shown, since the line is only what answered and a probe
                   dropping half its packets draws like a healthy one. Anything
                   under a tenth is written as such rather than rounded to 0.0. */}
-              <span className="tabular-nums opacity-60">
+              <span className="tabular-nums text-muted-foreground">
                 {s.loss > 0 && s.loss < 0.1 ? "<0.1" : s.loss.toFixed(1)}%
               </span>
             </button>
@@ -332,7 +371,7 @@ export function Latency({ id, className }: { id: number; className?: string }) {
           onClick={() => setSmooth((on) => !on)}
           aria-pressed={smooth}
           title="把孤立的异常值换成邻近若干桶的中位数，持续的变化保持原样"
-          className={`rounded-md border px-2 py-1 text-xs transition-opacity ${smooth ? "" : "opacity-40"}`}
+          className={cn("rounded-md border px-2 py-1 text-xs transition-colors", !smooth && "text-muted-foreground")}
         >
           削峰
         </button>
@@ -360,7 +399,7 @@ export function Latency({ id, className }: { id: number; className?: string }) {
                 // hub stores.
                 formatter={(v, name, item) => {
                   const loss = Number(item?.payload?.[`l${String(item.dataKey).slice(1)}`] ?? 0)
-                  return [`${Math.round(Number(v))} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
+                  return swatched(`${Math.round(Number(v))} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name, item?.color)
                 }}
               />
               {/* Behind the line, the range that bucket's answers spanned --
@@ -563,14 +602,14 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
             title={
               <>
                 网络速率
-                {/* Only the swatch takes the line's hue: as text it falls short
-                    of 4.5:1. */}
+                {/* Only the mark takes the line's hue: upload's amber measures
+                    3.3:1 as text. */}
                 <span className="ml-3 whitespace-nowrap">
-                  <span aria-hidden className="mr-1 inline-block size-2 rounded-full bg-chart-2" />
+                  <Swatch color="var(--color-net-down)" className="mr-1" />
                   下行{peak && <span className="tabular-nums"> 峰值 {rate(peak.rx)}</span>}
                 </span>
                 <span className="ml-2 whitespace-nowrap">
-                  <span aria-hidden className="mr-1 inline-block size-2 rounded-full bg-chart-3" />
+                  <Swatch color="var(--color-net-up)" className="mr-1" />
                   上行{peak && <span className="tabular-nums"> 峰值 {rate(peak.tx)}</span>}
                 </span>
               </>
@@ -588,12 +627,12 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                   formatter={(_, name, item) => {
                     const mean = item?.payload?.[`net_${item.dataKey}`]
                     const top = item?.payload?.[`net_${item.dataKey}_max`]
-                    return [top === undefined ? rate(mean) : `均值 ${rate(mean)} · 峰值 ${rate(top)}`, name]
+                    return swatched(top === undefined ? rate(mean) : `均值 ${rate(mean)} · 峰值 ${rate(top)}`, name, item?.color)
                   }}
                 />
                 {[
-                  { key: "rx", stroke: "var(--color-chart-2)" },
-                  { key: "tx", stroke: "var(--color-chart-3)" },
+                  { key: "rx", stroke: "var(--color-net-down)" },
+                  { key: "tx", stroke: "var(--color-net-up)" },
                 ].map((s) => (
                   <Area
                     key={s.key}
@@ -608,8 +647,8 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
                     legendType="none"
                   />
                 ))}
-                <Line dataKey="rx" name="下行" stroke="var(--color-chart-2)" {...RESOURCE_SERIES} />
-                <Line dataKey="tx" name="上行" stroke="var(--color-chart-3)" {...RESOURCE_SERIES} />
+                <Line dataKey="rx" name="下行" stroke="var(--color-net-down)" {...RESOURCE_SERIES} />
+                <Line dataKey="tx" name="上行" stroke="var(--color-net-up)" {...RESOURCE_SERIES} />
               </ComposedChart>
             </ResponsiveContainer>
           </Panel>
