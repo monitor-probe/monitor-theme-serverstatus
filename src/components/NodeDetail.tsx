@@ -85,7 +85,8 @@ const VALUE_AXIS = { ...AXIS, width: 68, interval: 0 }
 const PALETTE = [1, 2, 3, 4, 5].map((i) => `var(--color-chart-${i})`)
 
 // Shared by every chart's tooltip. recharts paints it white unless told
-// otherwise, which is a white box on the dark theme.
+// otherwise, which is a white box on the dark theme. The entries take the text
+// colour rather than their series' hue, which as text falls short of 4.5:1.
 const TOOLTIP = {
   labelFormatter: (ts: unknown) => new Date(Number(ts)).toLocaleString("zh-CN"),
   contentStyle: {
@@ -95,6 +96,7 @@ const TOOLTIP = {
     border: "1px solid var(--color-border)",
     borderRadius: "var(--radius)",
   },
+  itemStyle: { color: "var(--color-popover-foreground)" },
 }
 
 function Panel({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
@@ -304,6 +306,7 @@ export function Latency({ id, className }: { id: number; className?: string }) {
           return (
             <button
               key={s.id}
+              aria-pressed={shown}
               onClick={() =>
                 setHiddenProbes((h) => (shown ? [...h, s.id] : h.filter((id) => id !== s.id)))
               }
@@ -560,11 +563,15 @@ export function NodeDetail({ node, historyDays }: { node: Node; historyDays: num
             title={
               <>
                 网络速率
-                <span className="ml-3 whitespace-nowrap text-chart-2">
-                  ● 下行{peak && <span className="tabular-nums text-muted-foreground"> 峰值 {rate(peak.rx)}</span>}
+                {/* Only the swatch takes the line's hue: as text it falls short
+                    of 4.5:1. */}
+                <span className="ml-3 whitespace-nowrap">
+                  <span aria-hidden className="mr-1 inline-block size-2 rounded-full bg-chart-2" />
+                  下行{peak && <span className="tabular-nums"> 峰值 {rate(peak.rx)}</span>}
                 </span>
-                <span className="ml-2 whitespace-nowrap text-chart-3">
-                  ● 上行{peak && <span className="tabular-nums text-muted-foreground"> 峰值 {rate(peak.tx)}</span>}
+                <span className="ml-2 whitespace-nowrap">
+                  <span aria-hidden className="mr-1 inline-block size-2 rounded-full bg-chart-3" />
+                  上行{peak && <span className="tabular-nums"> 峰值 {rate(peak.tx)}</span>}
                 </span>
               </>
             }
