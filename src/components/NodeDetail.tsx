@@ -79,15 +79,15 @@ const RESOURCE_SERIES = {
 // a rate axis of 1 KB/s to 100 MB/s its 10 MB/s label and two gridlines.
 const VALUE_AXIS = { ...AXIS, width: 68, interval: 0 }
 
-// Hue alone separates the probes. A dash pattern would not: once every ping in a
-// day is on the chart its period is shorter than the jitter, and dotted and dashed
-// lines both read as texture.
+// Hue and lightness separate the probes; the steps are in index.css. A dash
+// pattern would not: once every ping in a day is on the chart its period is
+// shorter than the jitter, and dotted and dashed lines both read as texture.
 //
 // Spelled out rather than built from an index: Tailwind emits a theme variable
 // only when its full name appears in the source, so a template would leave
-// --color-chart-2 and --color-chart-3 undefined and those probes undrawn.
+// the --color-probe-* variables undefined and those probes undrawn.
 const PALETTE = [
-  "var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)",
+  "var(--color-probe-1)", "var(--color-probe-2)", "var(--color-probe-3)", "var(--color-probe-4)", "var(--color-probe-5)",
 ]
 
 // Shared by every chart's tooltip. recharts paints it white unless told

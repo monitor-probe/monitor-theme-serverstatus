@@ -9,8 +9,7 @@
 
 /* The classic ServerStatus palette: Bootstrap 3's greys, its green, amber and red
    as top-to-bottom gradients on bars and status dots, and a navy-grey dark mode.
-   The chart hues are separate and muted, so five probes stay distinguishable
-   without competing with the bars. */
+   The chart hues are separate and muted, so they do not compete with the bars. */
 :root {
   --radius: 0.375rem;
   --background: #f5f5f5;
@@ -46,6 +45,15 @@
      colour blindness. */
   --net-down: oklch(0.53 0.09 162);
   --net-up: oklch(0.65 0.11 72);
+  /* The latency chart's probes, in the chart hues but stepped in lightness:
+     13.4, 9.5, 6.7, 4.7 and 3.3 against the card, each pair at least 1.42
+     apart, so no two merge under red-green colour blindness, where hue alone
+     left pairs 1.02 apart. */
+  --probe-1: oklch(0.305 0.09 252);
+  --probe-2: oklch(0.384 0.08 162);
+  --probe-3: oklch(0.481 0.1 72);
+  --probe-4: oklch(0.574 0.12 342);
+  --probe-5: oklch(0.635 0.11 212);
   /* Text on the card. Bootstrap's own text shades, since the bar colours are too
      light to read as text on white. */
   --warn: #8a6d3b;
@@ -90,6 +98,12 @@
   /* 4.8 and 8.3 against the card, 1.7 apart. */
   --net-down: oklch(0.62 0.08 162);
   --net-up: oklch(0.78 0.1 76);
+  /* The same steps from the other end: 13.4 down to 3.3 against the card. */
+  --probe-1: oklch(0.924 0.035 252);
+  --probe-2: oklch(0.801 0.12 162);
+  --probe-3: oklch(0.721 0.12 72);
+  --probe-4: oklch(0.64 0.12 342);
+  --probe-5: oklch(0.531 0.09 212);
   --warn: #f0ad4e;
   --danger: #e0605c;
   --bar-track: rgb(255 255 255 / 7.5%);
@@ -129,6 +143,11 @@
   --color-chart-5: var(--chart-5);
   --color-net-down: var(--net-down);
   --color-net-up: var(--net-up);
+  --color-probe-1: var(--probe-1);
+  --color-probe-2: var(--probe-2);
+  --color-probe-3: var(--probe-3);
+  --color-probe-4: var(--probe-4);
+  --color-probe-5: var(--probe-5);
   --color-warn: var(--warn);
   --color-danger: var(--danger);
   --color-bar-track: var(--bar-track);
