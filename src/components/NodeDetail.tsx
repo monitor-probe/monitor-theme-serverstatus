@@ -93,7 +93,7 @@ const PALETTE = [
 // Shared by every chart's tooltip. recharts paints it white unless told
 // otherwise, which is a white box on the dark theme. The entries take the text
 // colour rather than their series' hue: on the light popover upload's amber and
-// three of the probe hues measure 3.3 to 3.6:1 as text. Where a chart has
+// the fifth probe hue measure about 3.3:1 as text. Where a chart has
 // several series, `swatched` puts each line's mark beside its entry instead.
 const TOOLTIP = {
   labelFormatter: (ts: unknown) => new Date(Number(ts)).toLocaleString("zh-CN"),
